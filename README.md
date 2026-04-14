@@ -2,6 +2,10 @@
 
 Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools, and SSH key authentication.
 
+## Disclaimer
+
+This project includes content generated with the assistance of artificial intelligence tools. Significant portions of the code, documentation, or other materials may have been created or refined using AI. While efforts have been made to review and validate all outputs, the accuracy and correctness of AI-generated content cannot be guaranteed. Users are encouraged to review and verify the code before use.
+
 ## What Gets Built
 
 - **Base**: Debian 12 Bookworm (ARM64) from `ghcr.io/cirruslabs/debian:bookworm`
@@ -12,7 +16,7 @@ Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools,
 - **Python**: GraalPy — version configured via `graalpy_version` variable
 - **CLI Tools**: git, curl, vim, jq, htop, tree, unzip, build-essential
 
-> **Customize versions**: Edit variables in `ansible/playbook.yml` (see [Software Versions](#software-versions) section)
+> **Customize versions**: Edit variables in `build/ansible/playbook.yml` (see [Software Versions](#software-versions) section)
 
 ## Key Concepts
 
@@ -20,7 +24,7 @@ Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools,
 
 **Ansible** provisions via **paramiko** (password auth during build) then switches to **key-only** SSH
 
-**Variables** control versions, paths, and SSH credentials — all customizable in `vars.pkrvars.hcl`
+**Variables** control versions, paths, and SSH credentials — all customizable in `build/vars.pkrvars.hcl`
 
 **Install order**: Docker → GraalPy → Java → Gradle → Maven
 
@@ -34,13 +38,16 @@ Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools,
 # 1. Prerequisites (macOS)
 brew install hashicorp/tap/packer ansible
 
-# 2. Initialize Packer plugins
+# 2. Build (run from project root)
+./build/provision.sh
+```
+
+Or run the steps manually from the `build/` directory:
+
+```bash
+cd build/
 packer init debian-ssh.pkr.hcl
-
-# 3. Validate configuration
 packer validate -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
-
-# 4. Build the image
 packer build -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
 ```
 
@@ -52,7 +59,7 @@ Build takes ~10-15 minutes. Result: local Tart image named `debian-ssh`
 
 ### VM Resources & Identity
 
-Edit `vars.pkrvars.hcl`:
+Edit `build/vars.pkrvars.hcl`:
 
 ```hcl
 vm_name      = "my-dev-vm"              # Change final image name
@@ -61,7 +68,7 @@ ssh_password = "admin"                  # Build-time password
 ssh_key_path = "~/.ssh/id_ed25519.pub" # Your public key to inject
 ```
 
-Edit `debian-ssh.pkr.hcl` source block for resources:
+Edit `build/debian-ssh.pkr.hcl` source block for resources:
 
 ```hcl
 source "tart-cli" "debian" {
@@ -73,7 +80,7 @@ source "tart-cli" "debian" {
 
 ### Software Versions
 
-Edit `ansible/playbook.yml` vars section:
+Edit `build/ansible/playbook.yml` vars section:
 
 ```yaml
 vars:
@@ -96,9 +103,10 @@ Map a local folder from your Mac to the VM using Tart's virtiofs sharing:
 
 ```bash
 # Start VM with directory mounted (headless, no GUI)
-tart run --no-graphics --dir=hostshare:/path/to/local/folder debian-ssh
+./bin/run.sh                          # shares $PWD as hostshare
+./bin/run.sh debian-ssh /path/to/dir  # custom share directory
 
-# Or use current directory
+# Or run tart directly
 tart run --no-graphics --dir=hostshare:$PWD debian-ssh
 ```
 
@@ -150,46 +158,10 @@ ssh debian-ssh
 **Add or update `~/.ssh/config` automatically** (resolves current VM IP):
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-HOST="debian-ssh"
-SSH_CONFIG="${HOME}/.ssh/config"
-IDENTITY_FILE="~/.ssh/id_ed25519_tart"
-USER="admin"
-
-# Resolve current VM IP
-IP=$(tart ip "$HOST" 2>/dev/null) || { echo "Error: VM '$HOST' not running"; exit 1; }
-echo "Resolved $HOST → $IP"
-
-# Ensure ~/.ssh/config exists
-mkdir -p "$(dirname "$SSH_CONFIG")"
-touch "$SSH_CONFIG"
-chmod 600 "$SSH_CONFIG"
-
-# Check if Host block already exists
-if grep -q "^Host ${HOST}$" "$SSH_CONFIG"; then
-    # Update existing HostName
-    sed -i '' "/^Host ${HOST}$/,/^Host / {
-        s/^    HostName .*/    HostName ${IP}/
-    }" "$SSH_CONFIG"
-    echo "Updated existing '$HOST' entry with IP $IP"
-else
-    # Append new block
-    cat >> "$SSH_CONFIG" <<EOF
-
-Host ${HOST}
-    HostName ${IP}
-    User ${USER}
-    IdentityFile ${IDENTITY_FILE}
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-EOF
-    echo "Added new '$HOST' entry with IP $IP"
-fi
+./bin/update-ssh-config.sh
 ```
 
-> **Tip**: The VM IP may change after each `tart run`. Re-run the script above to update `~/.ssh/config` accordingly.
+The script creates a `Host debian-ssh` block in `~/.ssh/config` if it doesn't exist, or updates the `HostName` if it does. Run it after each `tart run` since the VM IP may change.
 
 ### Test Docker (Requires Reboot)
 
@@ -343,7 +315,7 @@ tart list
 
 # Delete and rebuild
 tart delete debian-ssh
-packer build -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
+./build/provision.sh
 ```
 
 ### Shared Directory Not Visible
@@ -380,7 +352,7 @@ echo "com.apple.virtio-fs.automount /mnt/shared virtiofs defaults,nofail 0 0" | 
 
 ## Configuration Reference
 
-### ansible/playbook.yml Key Sections
+### build/ansible/playbook.yml Key Sections
 
 **Software version variables** — customize tool versions without editing tasks:
 
@@ -428,7 +400,7 @@ vars:
 - **SSH**: Paramiko connection during build, key-only after
 - **Idempotency**: All tasks check if already installed, safe to re-run
 
-### debian-ssh.pkr.hcl Key Configuration
+### build/debian-ssh.pkr.hcl Key Configuration
 
 ```hcl
 provisioner "ansible" {
@@ -444,11 +416,18 @@ provisioner "ansible" {
 
 ---
 
-## Project Files
+## Project Structure
 
-- `debian-ssh.pkr.hcl` — Packer template (plugins, source, provisioners)
-- `vars.pkrvars.hcl` — Variable values (VM name, SSH credentials)
-- `ansible/playbook.yml` — Complete provisioning playbook
-- `ansible/roles/ssh-setup/` — SSH hardening role (sshd_config)
-
-See source files for complete implementation details
+```
+build/                              # Image provisioning
+  debian-ssh.pkr.hcl                #   Packer template (plugins, source, provisioners)
+  vars.pkrvars.hcl                  #   Variable values (VM name, SSH credentials)
+  provision.sh                      #   One-command build script
+  ansible/                          #   Ansible provisioning
+    playbook.yml                    #     Complete provisioning playbook
+    roles/ssh-setup/                #     SSH hardening role (sshd_config)
+bin/                                # Runtime scripts
+  run.sh                            #   Start VM with host folder share
+  update-ssh-config.sh              #   Add/update SSH config for VM
+README.md                           # This file
+```

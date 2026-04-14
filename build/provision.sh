@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Change to build/ directory (where Packer files live)
+cd "$(dirname "$0")"
 
 # 1. Install Packer (if not done yet)
 # brew tap hashicorp/tap
