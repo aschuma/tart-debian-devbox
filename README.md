@@ -2,9 +2,18 @@
 
 Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools, and SSH key authentication.
 
+- [Tart](https://tart.run/) — virtual machine manager for Apple Silicon
+- [Cirrus Labs Debian Base Image](https://github.com/cirruslabs/linux-image-templates) — upstream Tart VM images
+- [Packer](https://www.packer.io/) — automated machine image builds
+- [Packer Tart Plugin](https://github.com/cirruslabs/packer-plugin-tart) — Tart builder for Packer
+- [Ansible](https://docs.ansible.com/) — infrastructure automation
+- [Eclipse Temurin](https://adoptium.net/) — OpenJDK distribution
+- [GraalPy](https://github.com/oracle/graalpython) — GraalVM-based Python implementation
+
 ## Disclaimer
 
 This project includes content generated with the assistance of artificial intelligence tools. Significant portions of the code, documentation, or other materials may have been created or refined using AI. While efforts have been made to review and validate all outputs, the accuracy and correctness of AI-generated content cannot be guaranteed. Users are encouraged to review and verify the code before use.
+
 
 ## What Gets Built
 
