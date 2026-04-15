@@ -22,8 +22,8 @@ variable "ssh_key_path" { default = "~/Ssh/id_ed25519_tart.pub" }
 source "tart-cli" "debian" {
   vm_base_name = "ghcr.io/cirruslabs/debian:bookworm"
   vm_name      = var.vm_name
-  cpu_count    = 2
-  memory_gb    = 2
+  cpu_count    = 4
+  memory_gb    = 10
   headless     = true
 
   ssh_username = var.ssh_user
