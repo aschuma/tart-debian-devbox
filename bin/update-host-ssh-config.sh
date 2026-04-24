@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HOST="debian-ssh"
-SSH_CONFIG="${HOME}/.ssh/config"
-IDENTITY_FILE="~/.ssh/id_ed25519_tart"
-USER="admin"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/shared-env.sh"
 
 # Resolve current VM IP
 IP=$(tart ip "$HOST" 2>/dev/null) || { echo "Error: VM '$HOST' not running"; exit 1; }
@@ -28,7 +26,7 @@ else
 
 Host ${HOST}
     HostName ${IP}
-    User ${USER}
+    User ${SSH_USER}
     IdentityFile ${IDENTITY_FILE}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null

@@ -436,7 +436,10 @@ build/                              # Image provisioning
     playbook.yml                    #     Complete provisioning playbook
     roles/ssh-setup/                #     SSH hardening role (sshd_config)
 bin/                                # Runtime scripts
+  shared-env.sh                     #   Shared variables (host, user, SSH key, share dir)
   run.sh                            #   Start VM with host folder share
-  update-ssh-config.sh              #   Add/update SSH config for VM
+  mount-share.sh                    #   Mount virtiofs share inside the VM via SSH
+  stop.sh                           #   Stop the running VM
+  update-host-ssh-config.sh         #   Add/update SSH config entry for VM
 README.md                           # This file
 ```
