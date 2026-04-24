@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/shared-env.sh"
+source "${SCRIPT_DIR}/../shared-env.sh"
 
 REMOTE_CMD='sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared'
 

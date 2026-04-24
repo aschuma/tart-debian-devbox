@@ -438,8 +438,9 @@ build/                              # Image provisioning
 bin/                                # Runtime scripts
   shared-env.sh                     #   Shared variables (host, user, SSH key, share dir)
   run.sh                            #   Start VM with host folder share
-  mount-share.sh                    #   Mount virtiofs share inside the VM via SSH
   stop.sh                           #   Stop the running VM
   update-host-ssh-config.sh         #   Add/update SSH config entry for VM
+  provision.sh                      #   Run all provisioning steps in order
+  provision.d/                      #   Provisioning step scripts (executed by provision.sh)
 README.md                           # This file
 ```
