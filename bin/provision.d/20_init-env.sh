@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Manual tweak required:
+# 
+# Edit the sshd_config (System-wide Fix)
+#
+# Open /etc/ssh/sshd_config.
+# Ensure PermitUserEnvironment is set to yes.
+# Restart SSH: sudo systemctl restart ssh.
+#
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../shared-env.sh"
 
