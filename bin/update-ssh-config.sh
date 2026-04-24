@@ -32,6 +32,7 @@ Host ${HOST}
     IdentityFile ${IDENTITY_FILE}
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
+    RemoteForward 1080 127.0.0.1:1080
 EOF
     echo "Added new '$HOST' entry with IP $IP"
 fi
