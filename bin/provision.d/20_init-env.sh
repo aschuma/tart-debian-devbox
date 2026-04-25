@@ -21,6 +21,7 @@ fi
 ssh -T \
   -F "$SSH_CONFIG" \
   -i "$IDENTITY_FILE" \
+  -o ClearAllForwardings=yes \
   "${SSH_USER}@${HOST}" bash << ENDSSH
 set -euo pipefail
 PROFILE_FILE='/etc/profile.d/tart-provision.sh'
