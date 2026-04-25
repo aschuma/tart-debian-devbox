@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  description: Installs Apache Maven and adds it to PATH
+  min_ansible_version: "2.14"
+
+dependencies:
+  - role: java

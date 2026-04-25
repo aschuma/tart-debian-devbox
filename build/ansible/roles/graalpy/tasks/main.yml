@@ -1,0 +1,70 @@
+---
+- name: Check if GraalPy {{ graalpy_version }} is installed
+  ansible.builtin.stat:
+    path: "{{ graalpy_install_dir }}/.installed-{{ graalpy_version }}"
+  register: graalpy_marker
+
+- name: Download GraalPy {{ graalpy_version }}
+  ansible.builtin.get_url:
+    url: "{{ graalpy_download_url }}"
+    dest: "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
+    mode: '0644'
+    timeout: 600
+  when: not graalpy_marker.stat.exists
+
+- name: Create GraalPy install directory
+  ansible.builtin.file:
+    path: "{{ graalpy_install_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Extract GraalPy {{ graalpy_version }}
+  ansible.builtin.unarchive:
+    src: "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
+    dest: "{{ graalpy_install_dir }}"
+    remote_src: true
+  when: not graalpy_marker.stat.exists
+
+- name: Mark GraalPy {{ graalpy_version }} as installed
+  ansible.builtin.file:
+    path: "{{ graalpy_install_dir }}/.installed-{{ graalpy_version }}"
+    state: touch
+    mode: '0644'
+  when: not graalpy_marker.stat.exists
+
+- name: Find actual GraalPy directory
+  ansible.builtin.find:
+    paths: "{{ graalpy_install_dir }}"
+    patterns: "graalpy*"
+    file_type: directory
+  register: graalpy_dirs
+
+- name: Set GraalPy binary path
+  ansible.builtin.set_fact:
+    __graalpy_binary: "{{ graalpy_dirs.files[0].path }}/bin/graalpy"
+  when: graalpy_dirs.matched > 0
+
+- name: Add GraalPy to PATH
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/graalpy.sh
+    regexp: '^export PATH=\$PATH:.*\/bin'
+    line: "export PATH=$PATH:{{ graalpy_dirs.files[0].path }}/bin"
+    create: true
+    mode: '0644'
+  when: graalpy_dirs.matched > 0
+
+- name: Verify GraalPy
+  ansible.builtin.command: "{{ __graalpy_binary }} --version"
+  register: graalpy_ver
+  changed_when: false
+  when: graalpy_dirs.matched > 0
+
+- name: Show GraalPy version
+  ansible.builtin.debug:
+    msg: "{{ graalpy_ver.stdout }}"
+  when: graalpy_dirs.matched > 0
+
+- name: Clean up GraalPy archive
+  ansible.builtin.file:
+    path: "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
+    state: absent

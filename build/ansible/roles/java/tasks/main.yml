@@ -1,0 +1,55 @@
+---
+- name: Check if Java {{ java_version }} is installed
+  ansible.builtin.stat:
+    path: "{{ java_home }}/bin/java"
+  register: java_bin
+
+- name: Download OpenJDK {{ java_version }}
+  ansible.builtin.get_url:
+    url: "{{ java_download_url }}"
+    dest: "/tmp/openjdk-{{ java_version }}.tar.gz"
+    mode: '0644'
+    timeout: 600
+  when: not java_bin.stat.exists
+
+- name: Create Java install directory
+  ansible.builtin.file:
+    path: "{{ java_install_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Extract OpenJDK {{ java_version }}
+  ansible.builtin.unarchive:
+    src: "/tmp/openjdk-{{ java_version }}.tar.gz"
+    dest: "{{ java_install_dir }}"
+    remote_src: true
+  when: not java_bin.stat.exists
+
+- name: Set JAVA_HOME system-wide
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    regexp: '^JAVA_HOME='
+    line: "JAVA_HOME={{ java_home }}"
+    state: present
+
+- name: Add Java to PATH
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/java.sh
+    regexp: '^export PATH=\$PATH:.*\/bin'
+    line: "export PATH=$PATH:{{ java_home }}/bin"
+    create: true
+    mode: '0644'
+
+- name: Verify Java
+  ansible.builtin.command: "{{ java_home }}/bin/java -version"
+  register: java_ver
+  changed_when: false
+
+- name: Show Java version
+  ansible.builtin.debug:
+    msg: "{{ java_ver.stderr }}"
+
+- name: Clean up Java archive
+  ansible.builtin.file:
+    path: "/tmp/openjdk-{{ java_version }}.tar.gz"
+    state: absent

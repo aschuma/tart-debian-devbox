@@ -15,9 +15,13 @@ else
   ENV_B64=$(base64 < /dev/null)
 fi
 
+# ENDSSH is deliberately unquoted so ${ENV_B64} expands on the client side.
+# All variables that must expand on the remote side are escaped with \$.
+# shellcheck disable=SC2087
 ssh -T \
   -F "$SSH_CONFIG" \
   -i "$IDENTITY_FILE" \
+  -o ClearAllForwardings=yes \
   "${SSH_USER}@${HOST}" bash << ENDSSH
 set -euo pipefail
 PROFILE_FILE='/etc/profile.d/tart-provision.sh'

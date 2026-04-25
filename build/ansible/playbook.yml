@@ -10,449 +10,66 @@
   become: true
   gather_facts: true
 
-  vars:
-    # ── Architecture ──────────────────────────────────────────────────────────
-    arch: arm64
-
-    # ── Java ──────────────────────────────────────────────────────────────────
-    java_version: "21"
-    java_build: "21.0.5+11"
-    java_install_dir: /opt/jdk
-    java_home: /opt/jdk/jdk-21.0.5+11
-    java_download_url: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.5_11.tar.gz"
-
-    # ── Gradle ────────────────────────────────────────────────────────────────
-    gradle_version: "8.12"
-    gradle_install_dir: /opt/gradle
-    gradle_download_url: "https://services.gradle.org/distributions/gradle-{{ gradle_version }}-bin.zip"
-
-    # ── Maven ─────────────────────────────────────────────────────────────────
-    maven_version: "3.9.9"
-    maven_install_dir: /opt/maven
-    maven_download_url: "https://archive.apache.org/dist/maven/maven-3/{{ maven_version }}/binaries/apache-maven-{{ maven_version }}-bin.tar.gz"
-
-    # ── GraalPy ───────────────────────────────────────────────────────────────
-    # NOTE: GitHub releases extract to "graalpy-community-<version>"
-    graalpy_version: "25.0.2"
-    graalpy_dir_name: "graalpy-community-{{ graalpy_version }}"
-    graalpy_install_dir: /opt/graalpy
-    graalpy_download_url: "https://github.com/oracle/graalpython/releases/download/graal-{{ graalpy_version }}/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
-
   # ---------------------------------------------------------------------------
   pre_tasks:
 
     - name: Update apt cache and upgrade all packages
-      apt:
+      ansible.builtin.apt:
         update_cache: true
         upgrade: dist
         cache_valid_time: 3600
       tags: [always]
 
   # ---------------------------------------------------------------------------
-  tasks:
+  roles:
 
-    # ── SSH setup ─────────────────────────────────────────────────────────────
-    - name: Install OpenSSH server
-      apt:
-        name: openssh-server
-        state: present
+    - role: ssh_setup
+      tags: [ssh]
 
-    - name: Ensure .ssh directory exists for admin user
-      file:
-        path: /home/admin/.ssh
-        state: directory
-        owner: admin
-        group: admin
-        mode: "0700"
-
-    - name: Add id_ed25519_tart.pub to admin authorized_keys
-      authorized_key:
-        user: admin
-        key: "{{ lookup('file', admin_ssh_key_path) }}"
-        state: present
-
-    - name: Create deploy user
-      user:
-        name: deploy
-        shell: /bin/bash
-        groups: sudo
-        append: true
-        create_home: true
-
-    - name: Add authorized key for deploy user
-      authorized_key:
-        user: deploy
-        key: "{{ lookup('file', admin_ssh_key_path) }}"
-        state: present
-
-    - name: Enable and start SSH
-      systemd:
-        name: ssh
-        enabled: true
-        state: started
-
-    # ── Basic CLI tools ───────────────────────────────────────────────────────
-    - name: Install base CLI tools
-      apt:
-        name:
-          - curl
-          - wget
-          - jq
-          - git
-          - vim
-          - unzip
-          - zip
-          - net-tools
-          - dnsutils
-          - iputils-ping
-          - htop
-          - tree
-          - rsync
-          - gnupg
-          - ca-certificates
-          - lsb-release
-          - apt-transport-https
-          - build-essential
-          - python3-pip
-          - postgresql-client
-        state: present
+    - role: common_tools
       tags: [tools]
 
-    - name: Configure Git defaults
-      become: false
-      shell: |
-        git config --global core.autocrlf input
-        git config --global init.defaultBranch main
-      changed_when: false
-      tags: [tools]
+    - role: nvm
+      tags: [nvm]
 
-    # ── Docker ────────────────────────────────────────────────────────────────
-    # Bookworm has an official Docker repo — no codename fallback needed
-    - name: Remove legacy Docker packages
-      apt:
-        name: [docker, docker-engine, docker.io, containerd, runc]
-        state: absent
-      tags: [docker]
+    - role: acli
+      tags: [acli]
 
-    - name: Create apt keyrings directory
-      file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: '0755'
-      tags: [docker]
+    - role: copilot_cli
+      tags: [copilot-cli]
 
-    - name: Download Docker GPG key
-      get_url:
-        url: https://download.docker.com/linux/debian/gpg
-        dest: /tmp/docker.asc
-        mode: '0644'
-        force: true
-      tags: [docker]
+    - role: opencode
+      tags: [opencode]  
 
-    - name: Dearmor Docker GPG key
-      shell: gpg --batch --yes --dearmor -o /etc/apt/keyrings/docker-archive-keyring.gpg /tmp/docker.asc
-      tags: [docker]
-
-    - name: Add Docker apt repository (bookworm)
-      copy:
-        dest: /etc/apt/sources.list.d/docker.list
-        content: "deb [arch={{ arch }} signed-by=/etc/apt/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian bookworm stable\n"
-        mode: '0644'
-      tags: [docker]
-
-    - name: Refresh apt cache after adding Docker repo
-      apt:
-        update_cache: true
-      tags: [docker]
-
-    - name: Install Docker Engine and Compose plugin
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
-      tags: [docker]
-
-    - name: Enable and start Docker daemon
-      systemd:
-        name: docker
-        enabled: true
-        state: started
-      tags: [docker]
-
-    - name: Add admin user to docker group
-      user:
-        name: "{{ ansible_user }}"
-        groups: docker
-        append: true
-      tags: [docker]
-
-    - name: Verify Docker
-      command: docker --version
-      register: docker_ver
-      changed_when: false
-      tags: [docker]
-
-    - name: Show Docker version
-      debug:
-        msg: "{{ docker_ver.stdout }}"
-      tags: [docker]
-
-    # ── GraalPy ───────────────────────────────────────────────────────────────
-    - name: Check if GraalPy {{ graalpy_version }} is installed
-      stat:
-        path: "{{ graalpy_install_dir }}/{{ graalpy_dir_name }}/bin/graalpy"
-      register: graalpy_bin
-      tags: [graalpy]
-
-    - name: Download GraalPy {{ graalpy_version }}
-      get_url:
-        url: "{{ graalpy_download_url }}"
-        dest: "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
-        mode: '0644'
-      when: not graalpy_bin.stat.exists
-      tags: [graalpy]
-
-    - name: Create GraalPy install directory
-      file:
-        path: "{{ graalpy_install_dir }}"
-        state: directory
-        mode: '0755'
-      tags: [graalpy]
-
-    - name: Extract GraalPy {{ graalpy_version }}
-      unarchive:
-        src: "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
-        dest: "{{ graalpy_install_dir }}"
-        remote_src: true
-      when: not graalpy_bin.stat.exists
-      tags: [graalpy]
-
-    - name: Find actual GraalPy directory
-      find:
-        paths: "{{ graalpy_install_dir }}"
-        patterns: "graalpy*"
-        file_type: directory
-      register: graalpy_dirs
-      tags: [graalpy]
-
-    - name: Set GraalPy binary path
-      set_fact:
-        graalpy_binary: "{{ graalpy_dirs.files[0].path }}/bin/graalpy"
-      when: graalpy_dirs.matched > 0
-      tags: [graalpy]
-
-    - name: Add GraalPy to PATH
-      lineinfile:
-        path: /etc/profile.d/graalpy.sh
-        line: "export PATH=$PATH:{{ graalpy_dirs.files[0].path }}/bin"
-        create: true
-        mode: '0644'
-      when: graalpy_dirs.matched > 0
-      tags: [graalpy]
-
-    - name: Verify GraalPy
-      command: "{{ graalpy_binary }} --version"
-      register: graalpy_ver
-      changed_when: false
-      when: graalpy_dirs.matched > 0
-      tags: [graalpy]
-
-    - name: Show GraalPy version
-      debug:
-        msg: "{{ graalpy_ver.stdout }}"
-      when: graalpy_dirs.matched > 0
-      tags: [graalpy]
-
-    # ── Java ──────────────────────────────────────────────────────────────────
-    - name: Check if Java {{ java_version }} is installed
-      stat:
-        path: "{{ java_home }}/bin/java"
-      register: java_bin
+    - role: java
       tags: [java]
 
-    - name: Download OpenJDK {{ java_version }}
-      get_url:
-        url: "{{ java_download_url }}"
-        dest: "/tmp/openjdk-{{ java_version }}.tar.gz"
-        mode: '0644'
-      when: not java_bin.stat.exists
-      tags: [java]
+    - role: docker
+      tags: [docker]
 
-    - name: Create Java install directory
-      file:
-        path: "{{ java_install_dir }}"
-        state: directory
-        mode: '0755'
-      tags: [java]
-
-    - name: Extract OpenJDK {{ java_version }}
-      unarchive:
-        src: "/tmp/openjdk-{{ java_version }}.tar.gz"
-        dest: "{{ java_install_dir }}"
-        remote_src: true
-      when: not java_bin.stat.exists
-      tags: [java]
-
-    - name: Set JAVA_HOME system-wide
-      lineinfile:
-        path: /etc/environment
-        regexp: '^JAVA_HOME='
-        line: "JAVA_HOME={{ java_home }}"
-        state: present
-      tags: [java]
-
-    - name: Add Java to PATH
-      lineinfile:
-        path: /etc/profile.d/java.sh
-        line: "export PATH=$PATH:{{ java_home }}/bin"
-        create: true
-        mode: '0644'
-      tags: [java]
-
-    - name: Verify Java
-      command: "{{ java_home }}/bin/java -version"
-      register: java_ver
-      changed_when: false
-      tags: [java]
-
-    - name: Show Java version
-      debug:
-        msg: "{{ java_ver.stderr }}"
-      tags: [java]
-
-    # ── Gradle ────────────────────────────────────────────────────────────────
-    - name: Check if Gradle {{ gradle_version }} is installed
-      stat:
-        path: "{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin/gradle"
-      register: gradle_bin
+    - role: gradle
       tags: [gradle]
 
-    - name: Download Gradle {{ gradle_version }}
-      get_url:
-        url: "{{ gradle_download_url }}"
-        dest: "/tmp/gradle-{{ gradle_version }}-bin.zip"
-        mode: '0644'
-      when: not gradle_bin.stat.exists
-      tags: [gradle]
-
-    - name: Create Gradle install directory
-      file:
-        path: "{{ gradle_install_dir }}"
-        state: directory
-        mode: '0755'
-      tags: [gradle]
-
-    - name: Extract Gradle {{ gradle_version }}
-      unarchive:
-        src: "/tmp/gradle-{{ gradle_version }}-bin.zip"
-        dest: "{{ gradle_install_dir }}"
-        remote_src: true
-      when: not gradle_bin.stat.exists
-      tags: [gradle]
-
-    - name: Add Gradle to PATH
-      lineinfile:
-        path: /etc/profile.d/gradle.sh
-        line: "export PATH=$PATH:{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin"
-        create: true
-        mode: '0644'
-      tags: [gradle]
-
-    - name: Verify Gradle
-      command: "{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin/gradle --version"
-      environment:
-        JAVA_HOME: "{{ java_home }}"
-        PATH: "{{ ansible_facts['env']['PATH'] }}:{{ java_home }}/bin"
-      register: gradle_ver
-      changed_when: false
-      tags: [gradle]
-
-    - name: Show Gradle version
-      debug:
-        msg: "{{ gradle_ver.stdout_lines[0] }}"
-      tags: [gradle]
-
-    # ── Maven ─────────────────────────────────────────────────────────────────
-    - name: Check if Maven {{ maven_version }} is installed
-      stat:
-        path: "{{ maven_install_dir }}/apache-maven-{{ maven_version }}/bin/mvn"
-      register: mvn_bin
+    - role: maven
       tags: [maven]
 
-    - name: Download Maven {{ maven_version }}
-      get_url:
-        url: "{{ maven_download_url }}"
-        dest: "/tmp/apache-maven-{{ maven_version }}-bin.tar.gz"
-        mode: '0644'
-      when: not mvn_bin.stat.exists
-      tags: [maven]
-
-    - name: Create Maven install directory
-      file:
-        path: "{{ maven_install_dir }}"
-        state: directory
-        mode: '0755'
-      tags: [maven]
-
-    - name: Extract Maven {{ maven_version }}
-      unarchive:
-        src: "/tmp/apache-maven-{{ maven_version }}-bin.tar.gz"
-        dest: "{{ maven_install_dir }}"
-        remote_src: true
-      when: not mvn_bin.stat.exists
-      tags: [maven]
-
-    - name: Add Maven to PATH
-      lineinfile:
-        path: /etc/profile.d/maven.sh
-        line: "export PATH=$PATH:{{ maven_install_dir }}/apache-maven-{{ maven_version }}/bin"
-        create: true
-        mode: '0644'
-      tags: [maven]
-
-    - name: Verify Maven
-      command: "{{ maven_install_dir }}/apache-maven-{{ maven_version }}/bin/mvn --version"
-      environment:
-        JAVA_HOME: "{{ java_home }}"
-        PATH: "{{ ansible_facts['env']['PATH'] }}:{{ java_home }}/bin"
-      register: mvn_ver
-      changed_when: false
-      tags: [maven]
-
-    - name: Show Maven version
-      debug:
-        msg: "{{ mvn_ver.stdout_lines[0] }}"
-      tags: [maven]
+    - role: graalpy
+      tags: [graalpy]
 
   # ---------------------------------------------------------------------------
   post_tasks:
 
-    - name: Clean up downloaded archives
-      file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "/tmp/docker.asc"
-        - "/tmp/openjdk-{{ java_version }}.tar.gz"
-        - "/tmp/gradle-{{ gradle_version }}-bin.zip"
-        - "/tmp/apache-maven-{{ maven_version }}-bin.tar.gz"
-        - "/tmp/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"
-      tags: [always]
-
     - name: Clean up apt cache
-      apt:
+      ansible.builtin.apt:
         autoclean: true
         autoremove: true
       tags: [always]
 
     - name: Provisioning complete
-      debug:
+      ansible.builtin.debug:
         msg: >-
           Done — Java={{ java_version }} ({{ java_build }}) Gradle={{ gradle_version }}
           Maven={{ maven_version }} GraalPy={{ graalpy_version }}
-          Docker installed. Reboot recommended for docker group changes.
+          nvm={{ nvm_version }} Node.js={{ node_version }}
+          Docker and Atlassian CLI installed. Reboot recommended for docker group changes.
       tags: [always]

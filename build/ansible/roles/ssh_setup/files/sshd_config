@@ -4,5 +4,6 @@ PasswordAuthentication no
 PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 X11Forwarding no
-AllowTcpForwarding no
 MaxAuthTries 3
+AllowTcpForwarding yes
+AllowStreamLocalForwarding yes

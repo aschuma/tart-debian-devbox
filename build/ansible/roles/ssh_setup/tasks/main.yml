@@ -1,0 +1,55 @@
+---
+- name: Install OpenSSH server
+  ansible.builtin.apt:
+    name: openssh-server
+    state: present
+    update_cache: true
+
+- name: Ensure .ssh directory exists for admin user
+  ansible.builtin.file:
+    path: /home/admin/.ssh
+    state: directory
+    owner: admin
+    group: admin
+    mode: "0700"
+
+- name: Add id_ed25519_tart.pub to admin authorized_keys
+  ansible.builtin.authorized_key:
+    user: admin
+    key: "{{ lookup('file', ssh_setup_admin_ssh_key_path) }}"
+    state: present
+  when: ssh_setup_admin_ssh_key_path | length > 0
+
+- name: Create deploy user
+  ansible.builtin.user:
+    name: deploy
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+
+- name: Add authorized key for deploy user
+  ansible.builtin.authorized_key:
+    user: deploy
+    key: "{{ lookup('file', ssh_setup_admin_ssh_key_path) }}"
+    state: present
+  when: ssh_setup_admin_ssh_key_path | length > 0
+
+- name: Copy hardened sshd_config
+  ansible.builtin.copy:
+    src: sshd_config
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable and start SSH
+  ansible.builtin.systemd:
+    name: ssh
+    enabled: true
+    state: started
+
+- name: Restart SSH to apply config
+  ansible.builtin.systemd:
+    name: ssh
+    state: restarted

@@ -1,0 +1,87 @@
+---
+- name: Check if nvm {{ nvm_version }} is installed
+  ansible.builtin.stat:
+    path: "{{ nvm_install_dir }}/nvm.sh"
+  register: nvm_sh
+
+- name: Create nvm install directory
+  ansible.builtin.file:
+    path: "{{ nvm_install_dir }}"
+    state: directory
+    mode: '0755'
+  when: not nvm_sh.stat.exists
+
+- name: Download nvm {{ nvm_version }} install script
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/nvm-sh/nvm/v{{ nvm_version }}/install.sh"
+    dest: /tmp/nvm-install.sh
+    mode: '0755'
+    timeout: 600
+  when: not nvm_sh.stat.exists
+
+- name: Install nvm {{ nvm_version }}
+  ansible.builtin.shell: bash /tmp/nvm-install.sh
+  args:
+    executable: /bin/bash
+  environment:
+    NVM_DIR: "{{ nvm_install_dir }}"
+  when: not nvm_sh.stat.exists
+  changed_when: not nvm_sh.stat.exists
+
+- name: Check if Node.js LTS default alias is set
+  ansible.builtin.stat:
+    path: "{{ nvm_install_dir }}/alias/default"
+  register: node_default
+
+- name: Install Node.js LTS and set as default
+  ansible.builtin.shell: |
+    export NVM_DIR="{{ nvm_install_dir }}"
+    source "{{ nvm_install_dir }}/nvm.sh"
+    nvm install "{{ node_version }}"
+    nvm alias default "{{ node_version }}"
+  args:
+    executable: /bin/bash
+  when: not node_default.stat.exists
+  changed_when: not node_default.stat.exists
+
+- name: Configure nvm system-wide via profile.d
+  ansible.builtin.copy:
+    dest: /etc/profile.d/nvm.sh
+    mode: '0644'
+    content: |
+      export NVM_DIR="{{ nvm_install_dir }}"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+- name: Verify node version
+  ansible.builtin.shell: |
+    export NVM_DIR="{{ nvm_install_dir }}"
+    source "{{ nvm_install_dir }}/nvm.sh"
+    node --version
+  args:
+    executable: /bin/bash
+  register: node_ver
+  changed_when: false
+
+- name: Show Node.js version
+  ansible.builtin.debug:
+    msg: "{{ node_ver.stdout }}"
+
+- name: Verify npx version
+  ansible.builtin.shell: |
+    export NVM_DIR="{{ nvm_install_dir }}"
+    source "{{ nvm_install_dir }}/nvm.sh"
+    npx --version
+  args:
+    executable: /bin/bash
+  register: npx_ver
+  changed_when: false
+
+- name: Show npx version
+  ansible.builtin.debug:
+    msg: "{{ npx_ver.stdout }}"
+
+- name: Clean up nvm install script
+  ansible.builtin.file:
+    path: /tmp/nvm-install.sh
+    state: absent

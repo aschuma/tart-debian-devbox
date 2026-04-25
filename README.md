@@ -1,6 +1,6 @@
 # Packer + Tart + Ansible: Debian 12 Dev VM
 
-Automated Debian 12 (Bookworm) development VM with Docker, Java 21, build tools, and SSH key authentication.
+Automated Debian 12 (Bookworm) development VM with Docker, Java 21, Node.js LTS, build tools, Atlassian CLI, GitHub Copilot CLI, and SSH key authentication.
 
 - [Tart](https://tart.run/) — virtual machine manager for Apple Silicon
 - [Cirrus Labs Debian Base Image](https://github.com/cirruslabs/linux-image-templates) — upstream Tart VM images
@@ -23,9 +23,13 @@ This project includes content generated with the assistance of artificial intell
 - **Java**: OpenJDK (Adoptium/Temurin) at `/opt/jdk` — version configured via `java_build` variable
 - **Build Tools**: Gradle + Maven — versions configured via `gradle_version` and `maven_version` variables
 - **Python**: GraalPy — version configured via `graalpy_version` variable
+- **Node.js**: nvm + Node.js LTS + npx — installed system-wide at `/opt/nvm`; version configured via `nvm_version` and `node_version` variables
+- **Atlassian CLI**: `acli` — installed from the official Atlassian apt repository
+- **GitHub Copilot CLI**: `gh copilot` — installed via npm (`@github/copilot`)
+- **opencode**: `opencode` — installed via npm (`opencode-ai`)
 - **CLI Tools**: git, curl, vim, jq, htop, tree, unzip, build-essential
 
-> **Customize versions**: Edit variables in `build/ansible/playbook.yml` (see [Software Versions](#software-versions) section)
+> **Customize versions**: Edit `vars/main.yml` inside each role under `build/ansible/roles/` (see [Software Versions](#software-versions) section)
 
 ## Key Concepts
 
@@ -35,7 +39,9 @@ This project includes content generated with the assistance of artificial intell
 
 **Variables** control versions, paths, and SSH credentials — all customizable in `build/vars.pkrvars.hcl`
 
-**Install order**: Docker → GraalPy → Java → Gradle → Maven
+**Install order**: ssh-setup → common-tools → docker → java → gradle → maven → graalpy → nvm → acli → copilot-cli → opencode
+
+**Role structure**: Each tool lives in its own role under `build/ansible/roles/`, with `tasks/main.yml` (what to do) and `vars/main.yml` (version/path variables). Roles are self-contained — they download, install, configure, verify, and clean up.
 
 **Directory sharing**: Linux VMs use virtiofs — all shares are exposed under a single mount tag (`com.apple.virtio-fs.automount`) and must be manually mounted (not auto-mounted like macOS guests). Each `--dir=NAME:PATH` becomes a subdirectory under the mount point.
 
@@ -64,6 +70,40 @@ Build takes ~10-15 minutes. Result: local Tart image named `debian-ssh`
 
 ---
 
+## Reprovision a Running VM
+
+The Ansible playbook runs independently of Packer and can be applied directly to any running VM. All roles are idempotent — already-installed tools are skipped.
+
+```bash
+# Run all roles against the running VM
+cd build/ansible
+ansible-playbook playbook.yml \
+  -i "$(tart ip debian-ssh)," \
+  --private-key ~/.ssh/id_ed25519_tart \
+  -u admin \
+  --become \
+  --extra-vars "ansible_user=admin ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
+```
+
+To apply only specific roles, use `--tags`:
+
+```bash
+# Install only nvm and acli on an existing VM
+ansible-playbook playbook.yml \
+  -i "$(tart ip debian-ssh)," \
+  --private-key ~/.ssh/id_ed25519_tart \
+  -u admin \
+  --become \
+  --tags nvm,acli \
+  --extra-vars "ansible_user=admin ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
+```
+
+Available tags: `ssh`, `tools`, `docker`, `java`, `gradle`, `maven`, `graalpy`, `nvm`, `acli`, `copilot-cli`, `opencode`
+
+> **Note**: `StrictHostKeyChecking=no` is required because the VM gets a new IP (and thus an unknown host key) each time it starts.
+
+---
+
 ## Customize via Variables
 
 ### VM Resources & Identity
@@ -89,15 +129,26 @@ source "tart-cli" "debian" {
 
 ### Software Versions
 
-Edit `build/ansible/playbook.yml` vars section:
+Each tool's version variables live in its own role. Edit the relevant `vars/main.yml`:
+
+| Tool | File |
+|------|------|
+| Java | `build/ansible/roles/java/vars/main.yml` |
+| Gradle | `build/ansible/roles/gradle/vars/main.yml` |
+| Maven | `build/ansible/roles/maven/vars/main.yml` |
+| GraalPy | `build/ansible/roles/graalpy/vars/main.yml` |
+| Docker | `build/ansible/roles/docker/vars/main.yml` |
+| nvm / Node.js | `build/ansible/roles/nvm/vars/main.yml` |
+| Atlassian CLI | `build/ansible/roles/acli/vars/main.yml` |
+
+Example — bump Java version in `roles/java/vars/main.yml`:
 
 ```yaml
-vars:
-  java_version: "21"              # Java major version
-  java_build: "21.0.5+11"         # Specific Adoptium build
-  gradle_version: "8.12"          # Gradle version
-  maven_version: "3.9.9"          # Maven version
-  graalpy_version: "25.0.2"       # GraalPy version
+java_version: "21"
+java_build: "21.0.5+11"
+java_install_dir: /opt/jdk
+java_home: /opt/jdk/jdk-21.0.5+11
+java_download_url: "https://github.com/adoptium/temurin21-binaries/..."
 ```
 
 Change versions, re-run `packer build` — idempotent (skips if already installed)
@@ -363,18 +414,26 @@ echo "com.apple.virtio-fs.automount /mnt/shared virtiofs defaults,nofail 0 0" | 
 
 ### build/ansible/playbook.yml Key Sections
 
-**Software version variables** — customize tool versions without editing tasks:
+The playbook is pure orchestration — no vars, no inline tasks. It runs roles in order:
 
 ```yaml
-vars:
-  java_version: "21"
-  java_build: "21.0.5+11"
-  gradle_version: "8.12"
-  maven_version: "3.9.9"
-  graalpy_version: "25.0.2"
+roles:
+  - { role: ssh-setup,     tags: [ssh]         }
+  - { role: common-tools,  tags: [tools]       }
+  - { role: docker,        tags: [docker]      }
+  - { role: java,          tags: [java]        }
+  - { role: gradle,        tags: [gradle]      }
+  - { role: maven,         tags: [maven]       }
+  - { role: graalpy,       tags: [graalpy]     }
+  - { role: nvm,           tags: [nvm]         }
+  - { role: acli,          tags: [acli]        }
+  - { role: copilot-cli,   tags: [copilot-cli] }
+  - { role: opencode,      tags: [opencode]    }
 ```
 
-**Installation tasks** (excerpt):
+Run a single role with `--tags`, e.g. `packer build` → `ansible-playbook --tags docker`.
+
+**Role task structure** (example — java role):
 
 ```yaml
 # Java — downloaded from Adoptium, not apt
@@ -418,7 +477,7 @@ provisioner "ansible" {
   
   extra_arguments = [
     "--connection=paramiko",  # Password auth during build
-    "--extra-vars", "admin_ssh_key_path=${var.ssh_key_path}"
+    "--extra-vars", "ssh_setup_admin_ssh_key_path=${var.ssh_key_path}"
   ]
 }
 ```
@@ -428,19 +487,48 @@ provisioner "ansible" {
 ## Project Structure
 
 ```
-build/                              # Image provisioning
-  debian-ssh.pkr.hcl                #   Packer template (plugins, source, provisioners)
-  vars.pkrvars.hcl                  #   Variable values (VM name, SSH credentials)
-  provision.sh                      #   One-command build script
-  ansible/                          #   Ansible provisioning
-    playbook.yml                    #     Complete provisioning playbook
-    roles/ssh-setup/                #     SSH hardening role (sshd_config)
-bin/                                # Runtime scripts
-  shared-env.sh                     #   Shared variables (host, user, SSH key, share dir)
-  run.sh                            #   Start VM with host folder share
-  stop.sh                           #   Stop the running VM
-  update-host-ssh-config.sh         #   Add/update SSH config entry for VM
-  provision.sh                      #   Run all provisioning steps in order
-  provision.d/                      #   Provisioning step scripts (executed by provision.sh)
-README.md                           # This file
+.
+├── build/                          # Image provisioning
+│   ├── debian-ssh.pkr.hcl          # Packer template
+│   │                               #   (plugins, source, provisioners)
+│   ├── vars.pkrvars.hcl            # Variable values
+│   │                               #   (VM name, SSH credentials)
+│   ├── provision.sh                # One-command build script
+│   └── ansible/                    # Ansible provisioning
+│       ├── playbook.yml            # Orchestration only
+│       │                           #   (no vars, no inline tasks)
+│       └── roles/
+│           ├── ssh-setup/          # SSH install, user setup,
+│           │   |                   #   key injection, daemon hardening
+│           │   ├── tasks/main.yml
+│           │   └── files/sshd_config
+│           ├── common-tools/       # Base CLI packages + git config
+│           │   └── tasks/main.yml
+│           ├── docker/             # Docker CE + Compose plugin
+│           │   ├── tasks/main.yml
+│           │   └── vars/main.yml   # arch
+│           ├── java/               # Adoptium/Temurin JDK
+│           │   ├── tasks/main.yml
+│           │   └── vars/main.yml   # java_version, java_build, 
+|           |                       #   java_home, …
+│           ├── gradle/             # Gradle build tool
+│           │   ├── tasks/main.yml
+│           │   └── vars/main.yml   # gradle_version, gradle_install_dir, …
+│           ├── maven/              # Apache Maven
+│           │   ├── tasks/main.yml
+│           │   └── vars/main.yml   # maven_version, maven_install_dir, …
+│           ├── graalpy/            # GraalVM Python
+│           │   ├── tasks/main.yml
+│           │   └── vars/main.yml   # graalpy_version, graalpy_install_dir, …
+|           └ ...
+├── bin/                            # Runtime scripts
+│   ├── shared-env.sh               # Shared variables
+│   │                               #   (host, user, SSH key, share dir)
+│   ├── run.sh                      # Start VM with host folder share
+│   ├── stop.sh                     # Stop the running VM
+│   ├── update-host-ssh-config.sh   # Add/update SSH config entry for VM
+│   ├── provision.sh                # Run all provisioning steps in order
+│   └── provision.d/                # Step scripts
+│                                   #   (executed by provision.sh)
+└── README.md
 ```
