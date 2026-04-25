@@ -8,8 +8,9 @@ source "${SCRIPT_DIR}/shared-env.sh"
 IP=$(tart ip "$HOST" 2>/dev/null) || { echo "Error: VM '$HOST' not running"; exit 1; }
 echo "Resolved $HOST → $IP"
 
-# Ensure ~/.ssh/config exists
+# Ensure ~/.ssh/config exists with correct permissions
 mkdir -p "$(dirname "$SSH_CONFIG")"
+chmod 700 "$(dirname "$SSH_CONFIG")"
 touch "$SSH_CONFIG"
 chmod 600 "$SSH_CONFIG"
 

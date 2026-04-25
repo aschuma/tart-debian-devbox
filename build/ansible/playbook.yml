@@ -14,7 +14,7 @@
   pre_tasks:
 
     - name: Update apt cache and upgrade all packages
-      apt:
+      ansible.builtin.apt:
         update_cache: true
         upgrade: dist
         cache_valid_time: 3600
@@ -23,10 +23,10 @@
   # ---------------------------------------------------------------------------
   roles:
 
-    - role: ssh-setup
+    - role: ssh_setup
       tags: [ssh]
 
-    - role: common-tools
+    - role: common_tools
       tags: [tools]
 
     - role: nvm
@@ -35,7 +35,7 @@
     - role: acli
       tags: [acli]
 
-    - role: copilot-cli
+    - role: copilot_cli
       tags: [copilot-cli]
 
     - role: opencode
@@ -60,13 +60,13 @@
   post_tasks:
 
     - name: Clean up apt cache
-      apt:
+      ansible.builtin.apt:
         autoclean: true
         autoremove: true
       tags: [always]
 
     - name: Provisioning complete
-      debug:
+      ansible.builtin.debug:
         msg: >-
           Done — Java={{ java_version }} ({{ java_build }}) Gradle={{ gradle_version }}
           Maven={{ maven_version }} GraalPy={{ graalpy_version }}

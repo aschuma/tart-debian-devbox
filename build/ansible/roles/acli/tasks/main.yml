@@ -1,51 +1,59 @@
 ---
 - name: Create apt keyrings directory
-  file:
+  ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
     mode: '0755'
 
+- name: Check if Atlassian CLI GPG keyring already exists
+  ansible.builtin.stat:
+    path: "{{ acli_keyring }}"
+  register: acli_keyring_stat
+
 - name: Download Atlassian CLI GPG key
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ acli_gpg_url }}"
     dest: /tmp/acli.asc
     mode: '0644'
-    force: true
     timeout: 600
+  when: not acli_keyring_stat.stat.exists
 
 - name: Dearmor Atlassian CLI GPG key
-  shell: gpg --batch --yes --dearmor -o "{{ acli_keyring }}" /tmp/acli.asc
+  ansible.builtin.command: gpg --batch --yes --dearmor -o "{{ acli_keyring }}" /tmp/acli.asc
+  when: not acli_keyring_stat.stat.exists
+  changed_when: not acli_keyring_stat.stat.exists
 
 - name: Set keyring permissions
-  file:
+  ansible.builtin.file:
     path: "{{ acli_keyring }}"
     mode: '0644'
 
 - name: Add Atlassian CLI apt repository
-  copy:
+  ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/acli.list
-    content: "deb [arch={{ arch }} signed-by={{ acli_keyring }}] {{ acli_repo_url }} stable main\n"
+    content: "deb [arch={{ acli_arch }} signed-by={{ acli_keyring }}] {{ acli_repo_url }} stable main\n"
     mode: '0644'
 
 - name: Refresh apt cache after adding acli repo
-  apt:
+  ansible.builtin.apt:
     update_cache: true
 
 - name: Install Atlassian CLI
-  apt:
+  ansible.builtin.apt:
     name: acli
     state: present
 
 - name: Verify Atlassian CLI
-  command: acli --version
+  ansible.builtin.command: acli --version
   register: acli_ver
   changed_when: false
 
 - name: Show Atlassian CLI version
-  debug:
+  ansible.builtin.debug:
     msg: "{{ acli_ver.stdout }}"
 
 - name: Clean up Atlassian CLI GPG key download
-  file:
+  ansible.builtin.file:
     path: /tmp/acli.asc
     state: absent
+  when: not acli_keyring_stat.stat.exists

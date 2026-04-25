@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  description: Installs Adoptium Temurin OpenJDK and sets JAVA_HOME system-wide
+  min_ansible_version: "2.14"
+
+dependencies: []

@@ -1,6 +1,1 @@
 ---
-# NOTE: GitHub releases extract to "graalpy-community-<version>"
-graalpy_version: "25.0.2"
-graalpy_dir_name: "graalpy-community-{{ graalpy_version }}"
-graalpy_install_dir: /opt/graalpy
-graalpy_download_url: "https://github.com/oracle/graalpython/releases/download/graal-{{ graalpy_version }}/graalpy-{{ graalpy_version }}-linux-aarch64.tar.gz"

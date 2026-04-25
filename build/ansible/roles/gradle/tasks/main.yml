@@ -1,11 +1,11 @@
 ---
 - name: Check if Gradle {{ gradle_version }} is installed
-  stat:
+  ansible.builtin.stat:
     path: "{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin/gradle"
   register: gradle_bin
 
 - name: Download Gradle {{ gradle_version }}
-  get_url:
+  ansible.builtin.get_url:
     url: "{{ gradle_download_url }}"
     dest: "/tmp/gradle-{{ gradle_version }}-bin.zip"
     mode: '0644'
@@ -13,27 +13,28 @@
   when: not gradle_bin.stat.exists
 
 - name: Create Gradle install directory
-  file:
+  ansible.builtin.file:
     path: "{{ gradle_install_dir }}"
     state: directory
     mode: '0755'
 
 - name: Extract Gradle {{ gradle_version }}
-  unarchive:
+  ansible.builtin.unarchive:
     src: "/tmp/gradle-{{ gradle_version }}-bin.zip"
     dest: "{{ gradle_install_dir }}"
     remote_src: true
   when: not gradle_bin.stat.exists
 
 - name: Add Gradle to PATH
-  lineinfile:
+  ansible.builtin.lineinfile:
     path: /etc/profile.d/gradle.sh
+    regexp: '^export PATH=\$PATH:.*\/bin'
     line: "export PATH=$PATH:{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin"
     create: true
     mode: '0644'
 
 - name: Verify Gradle
-  command: "{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin/gradle --version"
+  ansible.builtin.command: "{{ gradle_install_dir }}/gradle-{{ gradle_version }}/bin/gradle --version"
   environment:
     JAVA_HOME: "{{ java_home }}"
     PATH: "{{ ansible_facts['env']['PATH'] }}:{{ java_home }}/bin"
@@ -41,10 +42,10 @@
   changed_when: false
 
 - name: Show Gradle version
-  debug:
+  ansible.builtin.debug:
     msg: "{{ gradle_ver.stdout_lines[0] }}"
 
 - name: Clean up Gradle archive
-  file:
+  ansible.builtin.file:
     path: "/tmp/gradle-{{ gradle_version }}-bin.zip"
     state: absent

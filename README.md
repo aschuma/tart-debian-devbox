@@ -477,7 +477,7 @@ provisioner "ansible" {
   
   extra_arguments = [
     "--connection=paramiko",  # Password auth during build
-    "--extra-vars", "admin_ssh_key_path=${var.ssh_key_path}"
+    "--extra-vars", "ssh_setup_admin_ssh_key_path=${var.ssh_key_path}"
   ]
 }
 ```

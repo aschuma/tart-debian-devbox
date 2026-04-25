@@ -53,7 +53,7 @@ build {
       "--extra-vars", "ansible_become_password=${var.ssh_password}",
       "--extra-vars", "ansible_connection=ssh",
       "--extra-vars", "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'",
-      "--extra-vars", "admin_ssh_key_path=${var.ssh_key_path}",
+      "--extra-vars", "ssh_setup_admin_ssh_key_path=${var.ssh_key_path}",
       "--connection=paramiko",
       "-v"   # verbose — remove in prod
     ]

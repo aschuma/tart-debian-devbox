@@ -1,6 +1,1 @@
 ---
-java_version: "21"
-java_build: "21.0.5+11"
-java_install_dir: /opt/jdk
-java_home: /opt/jdk/jdk-21.0.5+11
-java_download_url: "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.5%2B11/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.5_11.tar.gz"
