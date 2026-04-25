@@ -1,0 +1,32 @@
+---
+- name: Install base CLI tools
+  apt:
+    name:
+      - curl
+      - wget
+      - jq
+      - git
+      - vim
+      - unzip
+      - zip
+      - net-tools
+      - dnsutils
+      - iputils-ping
+      - htop
+      - tree
+      - rsync
+      - gnupg
+      - ca-certificates
+      - lsb-release
+      - apt-transport-https
+      - build-essential
+      - python3-pip
+      - postgresql-client
+    state: present
+
+- name: Configure Git defaults
+  become: false
+  shell: |
+    git config --global core.autocrlf input
+    git config --global init.defaultBranch main
+  changed_when: false

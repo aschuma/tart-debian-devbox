@@ -1,0 +1,17 @@
+---
+- name: Check if opencode is installed
+  command: opencode --version
+  register: opencode_check
+  failed_when: false
+  changed_when: false
+
+- name: Install opencode
+  shell: |
+    export NVM_DIR=/opt/nvm
+    source "$NVM_DIR/nvm.sh"
+    npm install -g opencode-ai
+  args:
+    executable: /bin/bash
+  async: 300
+  poll: 10
+  when: opencode_check.rc != 0

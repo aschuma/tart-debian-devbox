@@ -1,0 +1,5 @@
+---
+arch: arm64
+acli_keyring: /etc/apt/keyrings/acli-archive-keyring.gpg
+acli_repo_url: https://acli.atlassian.com/linux/deb
+acli_gpg_url: https://acli.atlassian.com/gpg/public-key.asc

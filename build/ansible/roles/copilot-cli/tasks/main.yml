@@ -1,0 +1,17 @@
+---
+- name: Check if GitHub Copilot CLI is installed
+  command: gh copilot --version
+  register: copilot_check
+  failed_when: false
+  changed_when: false
+
+- name: Install GitHub Copilot CLI
+  shell: |
+    export NVM_DIR=/opt/nvm
+    source "$NVM_DIR/nvm.sh"
+    npm install -g @github/copilot
+  args:
+    executable: /bin/bash
+  async: 300
+  poll: 10
+  when: copilot_check.rc != 0
