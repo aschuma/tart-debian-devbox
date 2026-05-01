@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  description: Installs uv (Python package manager) and adds it to PATH
+  min_ansible_version: "2.14"
+
+dependencies: []

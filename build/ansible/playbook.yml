@@ -56,6 +56,9 @@
     - role: graalpy
       tags: [graalpy]
 
+    - role: uv
+      tags: [uv]
+
   # ---------------------------------------------------------------------------
   post_tasks:
 
@@ -70,6 +73,6 @@
         msg: >-
           Done — Java={{ java_version }} ({{ java_build }}) Gradle={{ gradle_version }}
           Maven={{ maven_version }} GraalPy={{ graalpy_version }}
-          nvm={{ nvm_version }} Node.js={{ node_version }}
+          nvm={{ nvm_version }} Node.js={{ node_version }} uv={{ uv_version }}
           Docker and Atlassian CLI installed. Reboot recommended for docker group changes.
       tags: [always]

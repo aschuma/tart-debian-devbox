@@ -1,0 +1,50 @@
+---
+- name: Check if uv {{ uv_version }} is installed
+  ansible.builtin.stat:
+    path: "{{ uv_install_dir }}/uv"
+  register: uv_bin
+
+- name: Create uv install directory
+  ansible.builtin.file:
+    path: "{{ uv_install_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Download uv {{ uv_version }}
+  ansible.builtin.get_url:
+    url: "{{ uv_download_url }}"
+    dest: "/tmp/uv-{{ uv_version }}-linux-aarch64.tar.gz"
+    mode: '0644'
+    timeout: 600
+  when: not uv_bin.stat.exists
+
+- name: Extract uv {{ uv_version }}
+  ansible.builtin.unarchive:
+    src: "/tmp/uv-{{ uv_version }}-linux-aarch64.tar.gz"
+    dest: "{{ uv_install_dir }}"
+    remote_src: true
+    extra_opts: ['--strip-components=1']
+  when: not uv_bin.stat.exists
+
+- name: Add uv to PATH
+  ansible.builtin.lineinfile:
+    path: /etc/profile.d/uv.sh
+    regexp: '^export PATH=\$PATH:.*uv'
+    line: "export PATH=$PATH:{{ uv_install_dir }}"
+    create: true
+    mode: '0644'
+
+- name: Verify uv
+  ansible.builtin.command: "{{ uv_install_dir }}/uv --version"
+  register: uv_ver
+  changed_when: false
+
+- name: Show uv version
+  ansible.builtin.debug:
+    msg: "{{ uv_ver.stdout }}"
+
+- name: Clean up uv archive
+  ansible.builtin.file:
+    path: "/tmp/uv-{{ uv_version }}-linux-aarch64.tar.gz"
+    state: absent
+  when: not uv_bin.stat.exists
