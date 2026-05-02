@@ -43,7 +43,7 @@ This project includes content generated with the assistance of artificial intell
 
 **Role structure**: Each tool lives in its own role under `build/ansible/roles/`, with `tasks/main.yml` (what to do) and `vars/main.yml` (version/path variables). Roles are self-contained — they download, install, configure, verify, and clean up.
 
-**Directory sharing**: Linux VMs use virtiofs — all shares are exposed under a single mount tag (`com.apple.virtio-fs.automount`) and must be manually mounted (not auto-mounted like macOS guests). Each `--dir=NAME:PATH` becomes a subdirectory under the mount point.
+**Directory sharing**: Linux VMs use virtiofs — all shares are exposed under a single mount tag (`com.apple.virtio-fs.automount`) and are not auto-mounted like macOS guests. `tart-ctl.sh` handles starting the VM with the share attached and mounting it inside the VM via the `provision` command.
 
 ---
 
@@ -155,85 +155,116 @@ Change versions, re-run `packer build` — idempotent (skips if already installe
 
 ---
 
+## After the Build: Clone Your Image
+
+Once the Packer build completes you have a local Tart image named `debian-ssh` (or whatever `vm_name` is set to in `build/vars.pkrvars.hcl`). Rather than rebuilding from scratch for each project or environment, clone the image — this is near-instant compared to the ~10-15 minute build:
+
+```bash
+tart clone debian-ssh debian-foo
+```
+
+You can then use `debian-foo` as the base for your day-to-day work, keeping the original `debian-ssh` image untouched as a clean baseline to clone from again at any time.
+
+---
+
+## VM Instance Control (`tart-ctl`)
+
+The `bin_template/` folder contains a control script and configuration templates that simplify day-to-day VM management. This is the recommended way to start, stop, provision, and SSH into your VM.
+
+### Setup
+
+**1. Install the script** — move `tart-ctl.sh` to any directory on your `$PATH`:
+
+```bash
+mv bin_template/tart-ctl.sh ~/.local/bin/tart-ctl.sh
+chmod +x ~/.local/bin/tart-ctl.sh
+```
+
+**2. Add config to your project** — copy the environment file and provision scripts to the root of the Git repository you want to work on inside the VM:
+
+```bash
+cp bin_template/.tart-ctl-env   ~/Projects/my-project/
+cp bin_template/.env            ~/Projects/my-project/
+cp -r bin_template/.tart-ctl-provision.d/ ~/Projects/my-project/
+```
+
+> Both `.tart-ctl-env` and `.tart-ctl-provision.d/` should be committed to your project's Git repository so all contributors share the same VM configuration.
+
+### Configuration
+
+Edit `.tart-ctl-env` in your project root. The key variables to configure per project are:
+
+| Variable | Description |
+|---|---|
+| `TCTL_VM_NAME` | Name of the Tart VM to manage (matches the image name built by Packer) |
+| `TCTL_HOST_SHARE_DIR` | Host directory mounted into the running VM via virtiofs |
+| `TCTL_IDENTITY_FILE` | Path to your SSH private key — **keep unchanged**; also used during image creation |
+
+```bash
+# .tart-ctl-env (example)
+TCTL_VM_NAME="my-dev-vm"
+TCTL_HOST_SHARE_DIR="/Users/you/Projects/my-project/"
+TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"   # do not change
+```
+
+> **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`). Changing it here without rebuilding the image will break SSH access.
+
+The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is picked up by the `provision` command and pushed into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM.
+
+### Usage
+
+`tart-ctl.sh` automatically finds its configuration by walking up from the current directory until it finds `.tart-ctl-env` or reaches the Git root. You can run it from any subdirectory of your project.
+
+| Command | Aliases | Description |
+|---|---|---|
+| `tart-ctl.sh start` | `up` | Start the VM (with host share if configured) |
+| `tart-ctl.sh stop` | `down` | Stop the running VM |
+| `tart-ctl.sh status` | `st` | Show whether the VM is running or stopped |
+| `tart-ctl.sh provision` | `pr` | Run all scripts in `.tart-ctl-provision.d/` |
+| `tart-ctl.sh ssh` | `sh` | Open an interactive SSH shell in the VM |
+| `tart-ctl.sh ip` | | Print the VM's current IP address |
+| `tart-ctl.sh update-ssh-config` | `usc` | Update `~/.ssh/config` with the VM's current IP |
+
+**Common workflow:**
+
+```bash
+cd ~/Projects/my-project   # or any subdirectory
+
+tart-ctl.sh up             # start the VM
+tart-ctl.sh provision      # mount share + push .env into the VM
+tart-ctl.sh ssh            # open a shell inside the VM
+
+tart-ctl.sh down           # shut down when done
+```
+
+### Provisioning Steps (`.tart-ctl-provision.d/`)
+
+The `provision` command executes all scripts in `.tart-ctl-provision.d/` in alphabetical order. The bundled steps are:
+
+| Script | What it does |
+|---|---|
+| `10_mount-share.sh` | Mounts the host virtiofs share at `/mnt/shared` inside the VM |
+| `20_init-env.sh` | Pushes `.env` into the VM as `/etc/profile.d/tart-provision.sh` |
+
+Add your own numbered scripts to extend provisioning. All `TCTL_*` variables from `.tart-ctl-env` are available as environment variables inside each script.
+
+---
+
 ## Using the VM
 
-### Start with Host Folder Mount
+Once the VM is running and provisioned (`tart-ctl.sh up && tart-ctl.sh provision`), connect with `tart-ctl.sh ssh`. A few things to be aware of on first use:
 
-Map a local folder from your Mac to the VM using Tart's virtiofs sharing:
+### Docker Requires a Re-login
 
-```bash
-# Start VM with directory mounted (headless, no GUI)
-./bin/run.sh                          # shares $PWD as hostshare
-./bin/run.sh debian-ssh /path/to/dir  # custom share directory
-
-# Or run tart directly
-tart run --no-graphics --dir=hostshare:$PWD debian-ssh
-```
-
-**Mount the shared directory inside the VM:**
-
-The shared directory is **NOT auto-mounted** in Debian. Tart exposes all `--dir` shares under a single virtiofs tag (`com.apple.virtio-fs.automount`). Each share name becomes a subdirectory under the mount point.
+Docker group membership only takes effect after a fresh login. On first connect you may see a permission error:
 
 ```bash
-# SSH into the VM
-ssh -i ~/.ssh/id_ed25519_tart admin@$(tart ip debian-ssh)
-
-# Mount the virtiofs filesystem
-sudo mkdir -p /mnt/shared
-sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
-
-# Your files are in a subdirectory matching the share name
-ls -la /mnt/shared/hostshare/
-```
-
-**Make it persistent across reboots** (add to `/etc/fstab`):
-
-```bash
-# Inside the VM
-echo "com.apple.virtio-fs.automount /mnt/shared virtiofs defaults,nofail 0 0" | sudo tee -a /etc/fstab
-
-# Test the fstab entry
-sudo mount -a
-ls -la /mnt/shared/hostshare/
-```
-
-> **Note**: The `nofail` option allows the VM to boot normally even when started without `--dir`. The `--dir=hostshare:...` flag makes the share *available* to the VM; you must always pass it when starting the VM for the mount to work.
-
-### SSH into the VM
-
-```bash
-# Get VM IP
-tart ip debian-ssh
-
-# SSH with key (password auth disabled after build)
-ssh -i ~/.ssh/id_ed25519_tart admin@192.168.64.X
-
-# Or use deploy user
-ssh -i ~/.ssh/id_ed25519_tart deploy@192.168.64.X
-
-# Then simply:
-ssh debian-ssh
-```
-
-**Add or update `~/.ssh/config` automatically** (resolves current VM IP):
-
-```bash
-./bin/update-ssh-config.sh
-```
-
-The script creates a `Host debian-ssh` block in `~/.ssh/config` if it doesn't exist, or updates the `HostName` if it does. Run it after each `tart run` since the VM IP may change.
-
-### Test Docker (Requires Reboot)
-
-```bash
-ssh debian-dev
-
 # First login — docker group not yet active
 docker ps  # permission denied
 
-# Reboot or re-login
+# Log out and back in (or reboot)
 logout
-ssh debian-dev
+tart-ctl.sh ssh
 
 # Now docker works
 docker ps
@@ -246,16 +277,17 @@ docker compose version
 
 ### Option 1: SSH Gateway (Recommended)
 
-1. **IntelliJ IDEA** → **File** → **Remote Development** → **SSH**
-2. **New Connection**:
-   - Host: `192.168.64.X` (from `tart ip debian-ssh`)
+1. Run `tart-ctl.sh update-ssh-config` to write the current VM IP into `~/.ssh/config`
+2. **IntelliJ IDEA** → **File** → **Remote Development** → **SSH**
+3. **New Connection**:
+   - Host: VM name from `TCTL_VM_NAME` (resolved via `~/.ssh/config`)
    - Port: `22`
    - User: `admin` or `deploy`
    - Authentication: **Key Pair**
    - Private key: `~/.ssh/id_ed25519_tart`
-3. **IDE Version**: Select latest available
-4. **Project Directory**: Choose project on VM or create new
-5. Click **Connect** — IntelliJ downloads IDE backend to VM, opens remote session
+4. **IDE Version**: Select latest available
+5. **Project Directory**: Choose project on VM or create new
+6. Click **Connect** — IntelliJ downloads IDE backend to VM, opens remote session
 
 **Benefits**:
 - Full IDE runs locally, only project files on VM
@@ -264,33 +296,20 @@ docker compose version
 
 ### Option 2: Mount Project via Tart Share
 
-```bash
-# Start VM with project mounted (headless)
-tart run --no-graphics --dir=project:/path/to/local/project debian-ssh
-```
-
-Then mount it inside the VM:
+Set `TCTL_HOST_SHARE_DIR` in `.tart-ctl-env` to your local project path, then:
 
 ```bash
-# SSH into VM
-ssh -i ~/.ssh/id_ed25519_tart admin@$(tart ip debian-ssh)
-
-# Mount all Tart shares
-sudo mkdir -p /mnt/shared
-sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
-
-# Project files are at /mnt/shared/project/
-ls -la /mnt/shared/project/
-
-# Make persistent (add to /etc/fstab)
-echo "com.apple.virtio-fs.automount /mnt/shared virtiofs defaults,nofail 0 0" | sudo tee -a /etc/fstab
+tart-ctl.sh up          # starts VM with the host share attached
+tart-ctl.sh provision   # mounts the share at /mnt/shared inside the VM
+tart-ctl.sh ssh         # open a shell — project files are at /mnt/shared/
 ```
 
 Then configure IntelliJ to use remote SDK:
 
-1. **File** → **Project Structure** → **SDKs** → **+** → **Add SSH SDK**
-2. Configure SSH to `admin@192.168.64.X`
-3. Point to `/opt/jdk/jdk-21.0.5+11` on the VM
+1. Run `tart-ctl.sh update-ssh-config` so the VM name resolves in `~/.ssh/config`
+2. **File** → **Project Structure** → **SDKs** → **+** → **Add SSH SDK**
+3. Configure SSH using the VM name from `TCTL_VM_NAME`, user `admin`
+4. Point to `/opt/jdk/jdk-21.0.5+11` on the VM
 
 **Benefits**:
 - Files stay on host (easier backup, local git)
@@ -380,10 +399,10 @@ tart delete debian-ssh
 
 ### Shared Directory Not Visible
 
-If you started the VM with `--dir=hostshare:...` but can't see files:
+If `tart-ctl.sh provision` runs `10_mount-share.sh` but files aren't visible inside the VM:
 
 ```bash
-# 1. Verify the virtiofs is supported
+# 1. Verify virtiofs support
 ssh debian-dev
 cat /proc/filesystems | grep virtiofs
 # Should show: nodev	virtiofs
@@ -396,17 +415,14 @@ findmnt -t virtiofs
 sudo mkdir -p /mnt/shared
 sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
 
-# 4. Your files are in a subdirectory matching the --dir name
-ls -la /mnt/shared/hostshare/
-
-# 5. Make permanent with nofail (survives reboot, safe without --dir)
-echo "com.apple.virtio-fs.automount /mnt/shared virtiofs defaults,nofail 0 0" | sudo tee -a /etc/fstab
+# 4. Your files are in a subdirectory matching the share directory name
+ls -la /mnt/shared/
 ```
 
 **Common issues**:
-- **Wrong mount tag**: Do NOT use the share name as the mount device. Tart uses a single fixed tag `com.apple.virtio-fs.automount` for all shares.
-- **Missing `--dir` flag**: The `--dir=NAME:PATH` flag must be passed every time you start the VM with `tart run`. Without it, the virtiofs device doesn't exist and mounting fails.
-- **`dmesg` shows `tag <name> not found`**: This confirms the wrong tag is being used — switch to `com.apple.virtio-fs.automount`.
+- **VM not started with a share**: `tart-ctl.sh start` only passes `--dir` when `TCTL_HOST_SHARE_DIR` is set in `.tart-ctl-env`. Verify the variable is set and the path exists on the host.
+- **Wrong mount tag**: Tart uses a single fixed tag `com.apple.virtio-fs.automount` for all shares — do not use the share name as the mount device.
+- **`dmesg` shows `tag <name> not found`**: Confirms the wrong tag is being used — switch to `com.apple.virtio-fs.automount`.
 
 ---
 
@@ -488,7 +504,7 @@ provisioner "ansible" {
 
 ```
 .
-├── build/                          # Image provisioning
+├── build/                          # Image creation (Packer + Ansible)
 │   ├── debian-ssh.pkr.hcl          # Packer template
 │   │                               #   (plugins, source, provisioners)
 │   ├── vars.pkrvars.hcl            # Variable values
@@ -509,8 +525,8 @@ provisioner "ansible" {
 │           │   └── vars/main.yml   # arch
 │           ├── java/               # Adoptium/Temurin JDK
 │           │   ├── tasks/main.yml
-│           │   └── vars/main.yml   # java_version, java_build, 
-|           |                       #   java_home, …
+│           │   └── vars/main.yml   # java_version, java_build,
+│           |                       #   java_home, …
 │           ├── gradle/             # Gradle build tool
 │           │   ├── tasks/main.yml
 │           │   └── vars/main.yml   # gradle_version, gradle_install_dir, …
@@ -520,15 +536,13 @@ provisioner "ansible" {
 │           ├── graalpy/            # GraalVM Python
 │           │   ├── tasks/main.yml
 │           │   └── vars/main.yml   # graalpy_version, graalpy_install_dir, …
-|           └ ...
-├── bin/                            # Runtime scripts
-│   ├── shared-env.sh               # Shared variables
-│   │                               #   (host, user, SSH key, share dir)
-│   ├── run.sh                      # Start VM with host folder share
-│   ├── stop.sh                     # Stop the running VM
-│   ├── update-host-ssh-config.sh   # Add/update SSH config entry for VM
-│   ├── provision.sh                # Run all provisioning steps in order
-│   └── provision.d/                # Step scripts
-│                                   #   (executed by provision.sh)
+|           └── ...
+├── bin_template/                   # VM instance control (copy to your project)
+│   ├── tart-ctl.sh                 # Control script — install to $PATH
+│   ├── .tart-ctl-env               # Per-project config (VM name, share dir, …)
+│   ├── .env                        # Project env vars pushed into the VM
+│   └── .tart-ctl-provision.d/      # Provisioning steps run by `tart-ctl.sh provision`
+│       ├── 10_mount-share.sh       # Mount host virtiofs share at /mnt/shared
+│       └── 20_init-env.sh          # Push .env into VM's /etc/profile.d/
 └── README.md
 ```

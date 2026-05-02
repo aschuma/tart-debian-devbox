@@ -1,0 +1,15 @@
+# tart-ctl configuration
+# This file is sourced by tart-ctl.sh — use standard shell variable syntax.
+# All variables use the TCTL_ prefix to avoid collisions with the environment.
+
+# ── VM identity ───────────────────────────────────────────────────────────────
+TCTL_VM_NAME="debian-ssh"
+
+# ── SSH / host settings ───────────────────────────────────────────────────────
+# Do not touch these unless you know what you're doing — tart-ctl relies on these settings to manage the VM.
+TCTL_SSH_USER="admin"
+TCTL_SSH_CONFIG="${HOME}/.ssh/config"
+TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"
+
+# ── Host share directory (optional — omit to start VM without a share) ────────
+# TCTL_HOST_SHARE_DIR="/Users/aschuma/Projects.Aschuma/"

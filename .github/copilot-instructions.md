@@ -29,7 +29,7 @@ ansible-playbook playbook.yml \
   --extra-vars "ansible_user=admin ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
-Available tags: `ssh`, `tools`, `docker`, `java`, `gradle`, `maven`, `graalpy`, `nvm`, `acli`, `copilot-cli`, `opencode`
+Available tags: `ssh`, `tools`, `docker`, `java`, `gradle`, `maven`, `graalpy`, `nvm`, `uv`, `acli`, `copilot-cli`, `opencode`
 
 ## Architecture
 
