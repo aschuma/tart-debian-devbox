@@ -19,10 +19,10 @@ echo
 ENV_FILE_LOCAL="${TCTL_CONFIG_DIR}/.env.local"
 
 echo "  Resolving env file (config dir: ${TCTL_CONFIG_DIR}) …"
-if [[ -f "${ENV_FILE_LOCAL}" ]]; then
+if [[ -f "${ENV_FILE_LOCAL}" || -p "${ENV_FILE_LOCAL}" ]]; then
   RESOLVED_ENV_FILE="${ENV_FILE_LOCAL}"
   echo "  [✓] Found .env.local — using ${RESOLVED_ENV_FILE}"
-elif [[ -f "${ENV_FILE}" ]]; then
+elif [[ -f "${ENV_FILE}" || -p "${ENV_FILE}" ]]; then
   RESOLVED_ENV_FILE="${ENV_FILE}"
   echo "  [✓] Found .env — using ${RESOLVED_ENV_FILE}"
   echo "  [i] Tip: create .env.local to override without modifying .env"
