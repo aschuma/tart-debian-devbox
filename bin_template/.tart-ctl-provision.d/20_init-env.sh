@@ -1,29 +1,45 @@
 #!/usr/bin/env bash
-# Pushes the sibling .env file into the VM's /etc/profile.d/tart-provision.sh.
+# Pushes a local env file into the VM's /etc/profile.d/tart-provision.sh.
+# Resolution order: .env.local → .env → empty fallback.
 # All TCTL_ variables are injected by tart-ctl.sh before this script runs.
-# TCTL_CONFIG_DIR points to the directory containing .tart-ctl-env and .env.
+# TCTL_CONFIG_DIR points to the directory containing .tart-ctl-env, .env, and .env.local.
 set -euo pipefail
 
 # The .env file lives alongside .tart-ctl-env (not inside the provision dir)
 ENV_FILE="${TCTL_CONFIG_DIR}/.env"
 PROFILE_DEST="/etc/profile.d/tart-provision.sh"
 
-echo "  Source .env: ${ENV_FILE}"
 echo "  Target     : ${TCTL_SSH_USER}@${TCTL_VM_NAME}:${PROFILE_DEST}"
 echo "  SSH config : ${TCTL_SSH_CONFIG}"
 echo "  Identity   : ${TCTL_IDENTITY_FILE}"
 echo
 
-# Base64-encode .env to safely transfer special characters to the VM.
-if [[ -f "${ENV_FILE}" ]]; then
-  local_line_count=$(grep -c '.' "${ENV_FILE}" || true)
-  echo "  Reading ${ENV_FILE} (${local_line_count} line(s)) …"
-  ENV_B64=$(base64 < "${ENV_FILE}")
+# Base64-encode env file to safely transfer special characters to the VM.
+# Resolution order: .env.local → .env → empty fallback
+ENV_FILE_LOCAL="${TCTL_CONFIG_DIR}/.env.local"
+
+echo "  Resolving env file (config dir: ${TCTL_CONFIG_DIR}) …"
+if [[ -f "${ENV_FILE_LOCAL}" ]]; then
+  RESOLVED_ENV_FILE="${ENV_FILE_LOCAL}"
+  echo "  [✓] Found .env.local — using ${RESOLVED_ENV_FILE}"
+elif [[ -f "${ENV_FILE}" ]]; then
+  RESOLVED_ENV_FILE="${ENV_FILE}"
+  echo "  [✓] Found .env — using ${RESOLVED_ENV_FILE}"
+  echo "  [i] Tip: create .env.local to override without modifying .env"
 else
-  echo "  [warn] No .env file found at ${ENV_FILE} — pushing empty environment."
+  RESOLVED_ENV_FILE=""
+  echo "  [warn] Neither .env.local nor .env found in ${TCTL_CONFIG_DIR} — pushing empty environment."
+fi
+
+if [[ -n "${RESOLVED_ENV_FILE}" ]]; then
+  local_line_count=$(grep -c '.' "${RESOLVED_ENV_FILE}" || true)
+  echo "  Reading ${RESOLVED_ENV_FILE} (${local_line_count} non-empty line(s)) …"
+  ENV_B64=$(base64 < "${RESOLVED_ENV_FILE}")
+else
   ENV_B64=$(base64 < /dev/null)
 fi
 
+echo
 echo "  Transferring environment to VM …"
 ssh -T \
   -F "${TCTL_SSH_CONFIG}" \
@@ -90,4 +106,7 @@ echo "  [vm] Done — \$export_count variable(s) exported, \$skip_count skipped.
 echo "  [vm] Profile written to \$PROFILE_FILE"
 ENDSSH
 
+echo
 echo "  Environment initialised successfully."
+echo "  Source file : ${RESOLVED_ENV_FILE:-"(none — empty environment pushed)"}"
+echo "  Target      : ${TCTL_SSH_USER}@${TCTL_VM_NAME}:${PROFILE_DEST}"
