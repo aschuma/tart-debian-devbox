@@ -16,24 +16,24 @@ readonly PROVISION_DIR_NAME=".tart-ctl-provision.d"
 # ─── Colours (only when stdout is a terminal) ─────────────────────────────────
 
 if [[ -t 1 ]]; then
-  BOLD='\033[1m'
-  DIM='\033[2m'
-  GREEN='\033[0;32m'
-  YELLOW='\033[0;33m'
-  RED='\033[0;31m'
-  CYAN='\033[0;36m'
-  RESET='\033[0m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  GREEN=$'\033[0;32m'
+  YELLOW=$'\033[0;33m'
+  RED=$'\033[0;31m'
+  CYAN=$'\033[0;36m'
+  RESET=$'\033[0m'
 else
   BOLD='' DIM='' GREEN='' YELLOW='' RED='' CYAN='' RESET=''
 fi
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-info()    { echo -e "${GREEN}==>${RESET} $*"; }
-warn()    { echo -e "${YELLOW}[warn]${RESET} $*" >&2; }
-error()   { echo -e "${RED}[error]${RESET} $*" >&2; }
-header()  { echo -e "${BOLD}${CYAN}$*${RESET}"; }
-dim()     { echo -e "${DIM}$*${RESET}"; }
+info()    { printf '%s\n' "${GREEN}==>${RESET} $*"; }
+warn()    { printf '%s\n' "${YELLOW}[warn]${RESET} $*" >&2; }
+error()   { printf '%s\n' "${RED}[error]${RESET} $*" >&2; }
+header()  { printf '%s\n' "${BOLD}${CYAN}$*${RESET}"; }
+dim()     { printf '%s\n' "${DIM}$*${RESET}"; }
 
 die() {
   error "$*"
@@ -186,17 +186,17 @@ cmd_status() {
   case "${state}" in
     running)
       vm_ip_or_false || true
-      echo -e "  State : ${GREEN}running${RESET}"
+      printf '%s\n' "  State : ${GREEN}running${RESET}"
       echo    "  IP    : ${VM_IP:-unknown}"
       ;;
     stopped)
-      echo -e "  State : ${YELLOW}stopped${RESET}"
+      printf '%s\n' "  State : ${YELLOW}stopped${RESET}"
       ;;
     unknown)
-      echo -e "  State : ${RED}unknown${RESET} (VM not found in tart list)"
+      printf '%s\n' "  State : ${RED}unknown${RESET} (VM not found in tart list)"
       ;;
     *)
-      echo -e "  State : ${DIM}${state}${RESET}"
+      printf '%s\n' "  State : ${DIM}${state}${RESET}"
       ;;
   esac
   echo    "  Config: ${CONFIG_FILE}"
@@ -307,12 +307,12 @@ cmd_provision() {
   for script in "${scripts[@]}"; do
     local name
     name="$(basename "${script}")"
-    echo -e "${BOLD}──► ${name}${RESET}"
+    printf '%s\n' "${BOLD}──► ${name}${RESET}"
     if bash "${script}"; then
-      echo -e "    ${GREEN}✓ done${RESET}"
+      printf '%s\n' "    ${GREEN}✓ done${RESET}"
     else
       local rc=$?
-      echo -e "    ${RED}✗ FAILED (exit ${rc})${RESET}"
+      printf '%s\n' "    ${RED}✗ FAILED (exit ${rc})${RESET}"
       (( failed++ )) || true
     fi
     echo
@@ -351,8 +351,8 @@ main() {
     die "'TCTL_VM_NAME' is not set in '${CONFIG_FILE}'."
   fi
 
-  echo -e "${DIM}Config : ${CONFIG_FILE}${RESET}"
-  echo -e "${DIM}VM     : ${TCTL_VM_NAME}${RESET}"
+  printf '%s\n' "${DIM}Config : ${CONFIG_FILE}${RESET}"
+  printf '%s\n' "${DIM}VM     : ${TCTL_VM_NAME}${RESET}"
   echo
 
   # Dispatch command
