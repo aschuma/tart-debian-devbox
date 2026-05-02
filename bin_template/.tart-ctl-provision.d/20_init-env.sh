@@ -78,7 +78,7 @@ while IFS= read -r line || [[ -n "\$line" ]]; do
   # Escape value safely and write export statement
   escaped_value=\$(printf '%q' "\$value")
   echo "export \$key=\$escaped_value"
-  echo "  [vm] Exporting: \$key"
+  echo "  [vm] Exporting: \$key" >&2
   (( export_count++ )) || true
 done < <(echo '${ENV_B64}' | base64 -d) >> "\$TMPFILE"
 
