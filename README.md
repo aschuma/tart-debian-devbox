@@ -188,8 +188,6 @@ cp bin_template/.env            ~/Projects/my-project/
 cp -r bin_template/.tart-ctl-provision.d/ ~/Projects/my-project/
 ```
 
-> Both `.tart-ctl-env` and `.tart-ctl-provision.d/` should be committed to your project's Git repository so all contributors share the same VM configuration.
-
 ### Configuration
 
 Edit `.tart-ctl-env` in your project root. The key variables to configure per project are:
