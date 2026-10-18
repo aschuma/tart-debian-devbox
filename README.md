@@ -350,6 +350,12 @@ TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"   # do not change
 
 The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is picked up by the `provision` command and pushed into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. If a **`.env.local`** exists next to it, it is used instead of `.env` — keep shared defaults in `.env` (committed) and personal overrides in `.env.local` (gitignored).
 
+The env file only needs to be *readable* — it may be a symlink, a FIFO, or a virtual file provided by a secrets manager (e.g. 1Password Environments); it is streamed exactly once and never stat'ed or re-read. To use a different source, set `TCTL_ENV_FILE`:
+
+```bash
+TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
+```
+
 ### Usage
 
 `tart-ctl.sh` automatically finds its configuration by walking up from the current directory until it finds `.tart-ctl-env` or reaches the Git root. You can run it from any subdirectory of your project.
