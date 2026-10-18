@@ -21,33 +21,33 @@ This project includes content generated with the assistance of artificial intell
 ## Architecture
 
 ```
-┌──────────────────────── host (macOS) ────────────────────────┐
+┌──────────────────────── host (macOS) ──────────────────────----──┐
 │  packer build ──► tart clone base ──► ansible-playbook ──► image │
-│  justfile / tart-ctl.sh            (paramiko, user admin)       │
-└──────────────────────────────────────────────────────────────┘
+│  justfile / tart-ctl.sh            (paramiko, user admin)        │
+└────────────────────────────────────────────────────────────----──┘
                                    │
-┌──────────────────────── VM (Debian 12 arm64) ────────────────┐
+┌──────────────────────── VM (Debian 12 arm64) ───────────────--─┐
 │  users          devbox  (zsh, ssh key, NOPASSWD sudo, docker)  │
 │  apt            base CLI tools, Docker CE, mise binary         │
 │  mise (devbox)  ~/.config/mise/config.toml  ◄── tool_versions  │
 │                 ~/.local/share/mise/installs/<tool>/<version>  │
-└──────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────--┘
 ```
 
 **Packer** clones the base image, boots it, and runs the Ansible playbook over SSH (password auth as `admin` via paramiko). The result is a local Tart image (default name `debian-ssh`).
 
 **Ansible** is pure orchestration — `playbook.yml` runs these roles in order:
 
-| Role | Tag | What it does |
-|---|---|---|
-| `user` | `user` | Creates `devbox` (sudo, docker, SSH key), removes legacy `deploy`, hardens `sshd` |
-| `common_tools` | `common-tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox` |
-| `docker` | `docker` | Docker CE + Buildx + Compose plugin from the official Docker apt repo |
-| `mise` | `mise` | Installs mise from its apt repo, shell activation, generates the global mise config |
-| `runtimes` | `runtimes` | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, Python, GraalPy |
-| `cli_tools` | `cli-tools` | `mise install` of gh, aws-cli, terraform, packer, uv, ruff, acli, starship, copilot, codex, opencode |
-| `shell` | `shell` | zsh as login shell of `devbox`, `~/.zshenv`/`~/.zshrc`, starship prompt, bash + zsh completions for mise/gh/docker/uv/ruff/starship |
-| `verify` | `verify` | Final gate: `mise doctor`, every `<tool> --version`, zsh/starship wiring, docker, sudo, group membership — **the build fails if any check fails** |
+| Role           | Tag            | What it does                                                                                                                                      |
+| -------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user`         | `user`         | Creates `devbox` (sudo, docker, SSH key), removes legacy `deploy`, hardens `sshd`                                                                 |
+| `common_tools` | `common-tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox`                                                                  |
+| `docker`       | `docker`       | Docker CE + Buildx + Compose plugin from the official Docker apt repo                                                                             |
+| `mise`         | `mise`         | Installs mise from its apt repo, shell activation, generates the global mise config                                                               |
+| `runtimes`     | `runtimes`     | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, Python, GraalPy                                                                           |
+| `cli_tools`    | `cli-tools`    | `mise install` of gh, aws-cli, terraform, packer, uv, ruff, acli, starship, copilot, codex, opencode                                              |
+| `shell`        | `shell`        | zsh as login shell of `devbox`, `~/.zshenv`/`~/.zshrc`, starship prompt, bash + zsh completions for mise/gh/docker/uv/ruff/starship               |
+| `verify`       | `verify`       | Final gate: `mise doctor`, every `<tool> --version`, zsh/starship wiring, docker, sudo, group membership — **the build fails if any check fails** |
 
 **Package sources**, in order of preference:
 
@@ -61,10 +61,10 @@ This project includes content generated with the assistance of artificial intell
 
 There is exactly one developer account:
 
-| User | Purpose | Auth | sudo |
-|---|---|---|---|
-| `devbox` | Day-to-day work, SSH target, owner of all mise tools | SSH key (`~/.ssh/id_ed25519_tart`) | passwordless |
-| `admin` | Base-image account used by Packer/Ansible **during the build only** | password (`admin`) — password SSH login is disabled by `sshd_config` | yes |
+| User     | Purpose                                                             | Auth                                                                 | sudo         |
+| -------- | ------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------ |
+| `devbox` | Day-to-day work, SSH target, owner of all mise tools                | SSH key (`~/.ssh/id_ed25519_tart`)                                   | passwordless |
+| `admin`  | Base-image account used by Packer/Ansible **during the build only** | password (`admin`) — password SSH login is disabled by `sshd_config` | yes          |
 
 ```bash
 id devbox        # uid=1001(devbox) gid=1001(devbox) groups=devbox,sudo,docker
@@ -78,17 +78,17 @@ docker ps        # works without sudo
 
 ## Installed Tools
 
-| Category | Tools | Source |
-|---|---|---|
-| Runtimes | Java (Temurin 25), Node.js (LTS, with npm/npx), Kotlin | mise |
-| Build tools | Gradle, Maven | mise |
-| Python | CPython 3.13 (`python`, `pip`), GraalPy (community), uv, ruff | mise |
-| Cloud / infra | aws-cli, terraform, packer | mise |
-| Dev CLIs | gh (GitHub CLI), acli (Atlassian CLI) | mise |
-| Shell | zsh (login shell), starship prompt | apt / mise |
-| AI assistants | GitHub Copilot CLI (`copilot`), Codex CLI (`codex`), OpenCode (`opencode`) | mise |
-| Containers | Docker CE, Buildx, Compose plugin | apt (docker.com repo) |
-| Base | git, curl, wget, jq, vim, htop, tree, unzip, zip, rsync, build-essential, postgresql-client | apt |
+| Category      | Tools                                                                                       | Source                |
+| ------------- | ------------------------------------------------------------------------------------------- | --------------------- |
+| Runtimes      | Java (Temurin 25), Node.js (LTS, with npm/npx), Kotlin                                      | mise                  |
+| Build tools   | Gradle, Maven                                                                               | mise                  |
+| Python        | CPython 3.13 (`python`, `pip`), GraalPy (community), uv, ruff                               | mise                  |
+| Cloud / infra | aws-cli, terraform, packer                                                                  | mise                  |
+| Dev CLIs      | gh (GitHub CLI), acli (Atlassian CLI)                                                       | mise                  |
+| Shell         | zsh (login shell), starship prompt                                                          | apt / mise            |
+| AI assistants | GitHub Copilot CLI (`copilot`), Codex CLI (`codex`), OpenCode (`opencode`)                  | mise                  |
+| Containers    | Docker CE, Buildx, Compose plugin                                                           | apt (docker.com repo) |
+| Base          | git, curl, wget, jq, vim, htop, tree, unzip, zip, rsync, build-essential, postgresql-client | apt                   |
 
 All mise tools are installed **per user** under `/home/devbox/.local/share/mise/` and exposed through mise's PATH management (see [Login Shells](#login-shells--non-interactive-commands)).
 
@@ -101,29 +101,29 @@ All versions live in **one file**:
 ```yaml
 # build/ansible/group_vars/all/tool_versions.yml
 mise_runtimes:
-  java: "temurin-25"
-  node: "lts"
-  gradle: "latest"
-  maven: "latest"
-  kotlin: "latest"
-  python: "3.13"
-  "github:oracle/graalpython":
-    version: "latest"
-    version_prefix: "graal-"
-    asset_pattern: "graalpy*-community-{version}-linux-aarch64.tar.gz"
+  java: 'temurin-25'
+  node: 'lts'
+  gradle: 'latest'
+  maven: 'latest'
+  kotlin: 'latest'
+  python: '3.13'
+  'github:oracle/graalpython':
+    version: 'latest'
+    version_prefix: 'graal-'
+    asset_pattern: 'graalpy*-community-{version}-linux-aarch64.tar.gz'
 
 mise_cli_tools:
-  gh: "latest"
-  aws-cli: "latest"
-  terraform: "latest"
-  packer: "latest"
-  uv: "latest"
-  ruff: "latest"
-  acli: "latest"
-  starship: "latest"
-  copilot: "latest"
-  codex: "latest"
-  opencode: "latest"
+  gh: 'latest'
+  aws-cli: 'latest'
+  terraform: 'latest'
+  packer: 'latest'
+  uv: 'latest'
+  ruff: 'latest'
+  acli: 'latest'
+  starship: 'latest'
+  copilot: 'latest'
+  codex: 'latest'
+  opencode: 'latest'
 ```
 
 The `mise` role renders both dicts into the devbox user's global config:
@@ -193,13 +193,13 @@ Config files under `/mnt/shared` (the virtiofs host share) and `/home/devbox` ar
 
 If you built an image before the mise refactor:
 
-| Before | Now |
-|---|---|
-| Users `admin` + `deploy` | Single `devbox` user; `admin` is build-only |
-| Tools under `/opt/{jdk,gradle,maven,graalpy,nvm,uv}` | `~/.local/share/mise/installs/<tool>/<version>` for `devbox` |
-| Versions in `roles/<tool>/vars/main.yml` | `group_vars/all/tool_versions.yml` |
-| Tags `ssh tools java gradle maven graalpy nvm uv acli copilot-cli opencode` | `user common-tools docker mise runtimes cli-tools verify` |
-| `gh copilot` | `copilot` (standalone GitHub Copilot CLI) |
+| Before                                                                      | Now                                                          |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Users `admin` + `deploy`                                                    | Single `devbox` user; `admin` is build-only                  |
+| Tools under `/opt/{jdk,gradle,maven,graalpy,nvm,uv}`                        | `~/.local/share/mise/installs/<tool>/<version>` for `devbox` |
+| Versions in `roles/<tool>/vars/main.yml`                                    | `group_vars/all/tool_versions.yml`                           |
+| Tags `ssh tools java gradle maven graalpy nvm uv acli copilot-cli opencode` | `user common-tools docker mise runtimes cli-tools verify`    |
+| `gh copilot`                                                                | `copilot` (standalone GitHub Copilot CLI)                    |
 
 Rebuild the image, set `TCTL_SSH_USER="devbox"` in your `.tart-ctl-env`, then run `tart-ctl.sh update-ssh-config` once to rewrite the `User` line in `~/.ssh/config`.
 
@@ -278,19 +278,19 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 
 ## Lifecycle Management
 
-| Task | Command |
-|---|---|
-| Build image | `just build` |
-| Clone image for a project | `tart clone debian-ssh my-project` |
-| Start / stop / status | `just start`, `just stop`, `just status` (→ `tart-ctl.sh`) |
-| Mount share + push `.env` | `just provision` |
-| Shell | `just ssh` |
-| Update `~/.ssh/config` | `just ssh-config` |
-| List tools in the VM | `just tools` (→ `mise ls`) |
-| Upgrade tools on a VM | `just reprovision mise,runtimes,cli-tools` or `mise upgrade` inside the VM |
-| Validate templates | `just validate` |
-| Lint Ansible/YAML | `just lint` (also runs in GitHub Actions) |
-| Delete image | `just clean` (→ `tart delete`) |
+| Task                      | Command                                                                    |
+| ------------------------- | -------------------------------------------------------------------------- |
+| Build image               | `just build`                                                               |
+| Clone image for a project | `tart clone debian-ssh my-project`                                         |
+| Start / stop / status     | `just start`, `just stop`, `just status` (→ `tart-ctl.sh`)                 |
+| Mount share + push `.env` | `just provision`                                                           |
+| Shell                     | `just ssh`                                                                 |
+| Update `~/.ssh/config`    | `just ssh-config`                                                          |
+| List tools in the VM      | `just tools` (→ `mise ls`)                                                 |
+| Upgrade tools on a VM     | `just reprovision mise,runtimes,cli-tools` or `mise upgrade` inside the VM |
+| Validate templates        | `just validate`                                                            |
+| Lint Ansible/YAML         | `just lint` (also runs in GitHub Actions)                                  |
+| Delete image              | `just clean` (→ `tart delete`)                                             |
 
 The `justfile` is a thin wrapper around `build/provision.sh`, `tart-ctl.sh` and `ansible-playbook`; every recipe can be run by hand. `just start/stop/provision/ssh` must be run from a directory that has a `.tart-ctl-env` (see [VM Instance Control](#vm-instance-control-tart-ctl)).
 
@@ -333,12 +333,12 @@ cp -r bin_template/.tart-ctl-provision.d/ ~/Projects/my-project/
 
 Edit `.tart-ctl-env` in your project root. The key variables to configure per project are:
 
-| Variable | Description |
-|---|---|
-| `TCTL_VM_NAME` | Name of the Tart VM to manage (matches the image name built by Packer) |
-| `TCTL_HOST_SHARE_DIR` | Host directory mounted into the running VM via virtiofs |
-| `TCTL_SSH_USER` | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged** |
-| `TCTL_IDENTITY_FILE` | Path to your SSH private key — **keep unchanged**; also used during image creation |
+| Variable              | Description                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `TCTL_VM_NAME`        | Name of the Tart VM to manage (matches the image name built by Packer)                |
+| `TCTL_HOST_SHARE_DIR` | Host directory mounted into the running VM via virtiofs                               |
+| `TCTL_SSH_USER`       | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged** |
+| `TCTL_IDENTITY_FILE`  | Path to your SSH private key — **keep unchanged**; also used during image creation    |
 
 ```bash
 # .tart-ctl-env (example)
@@ -355,15 +355,15 @@ The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is 
 
 `tart-ctl.sh` automatically finds its configuration by walking up from the current directory until it finds `.tart-ctl-env` or reaches the Git root. You can run it from any subdirectory of your project.
 
-| Command | Aliases | Description |
-|---|---|---|
-| `tart-ctl.sh start` | `up` | Start the VM (with host share if configured) |
-| `tart-ctl.sh stop` | `down` | Stop the running VM |
-| `tart-ctl.sh status` | `st` | Show whether the VM is running or stopped |
-| `tart-ctl.sh provision` | `pr` | Run all scripts in `.tart-ctl-provision.d/` |
-| `tart-ctl.sh ssh` | `sh` | Open an interactive SSH shell in the VM |
-| `tart-ctl.sh ip` | | Print the VM's current IP address |
-| `tart-ctl.sh update-ssh-config` | `usc` | Update `~/.ssh/config` with the VM's current IP |
+| Command                         | Aliases | Description                                     |
+| ------------------------------- | ------- | ----------------------------------------------- |
+| `tart-ctl.sh start`             | `up`    | Start the VM (with host share if configured)    |
+| `tart-ctl.sh stop`              | `down`  | Stop the running VM                             |
+| `tart-ctl.sh status`            | `st`    | Show whether the VM is running or stopped       |
+| `tart-ctl.sh provision`         | `pr`    | Run all scripts in `.tart-ctl-provision.d/`     |
+| `tart-ctl.sh ssh`               | `sh`    | Open an interactive SSH shell in the VM         |
+| `tart-ctl.sh ip`                |         | Print the VM's current IP address               |
+| `tart-ctl.sh update-ssh-config` | `usc`   | Update `~/.ssh/config` with the VM's current IP |
 
 **Common workflow:**
 
@@ -381,10 +381,10 @@ tart-ctl.sh down           # shut down when done
 
 The `provision` command executes all scripts in `.tart-ctl-provision.d/` in alphabetical order. The bundled steps are:
 
-| Script | What it does |
-|---|---|
-| `10_mount-share.sh` | Mounts the host virtiofs share at `/mnt/shared` inside the VM |
-| `20_init-env.sh` | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
+| Script              | What it does                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `10_mount-share.sh` | Mounts the host virtiofs share at `/mnt/shared` inside the VM                                 |
+| `20_init-env.sh`    | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
 
 Add your own numbered scripts to extend provisioning. All `TCTL_*` variables from `.tart-ctl-env` are available as environment variables inside each script.
 
@@ -398,14 +398,14 @@ Once the VM is running and provisioned (`tart-ctl.sh up && tart-ctl.sh provision
 
 `devbox` logs in to **zsh** with a [starship](https://starship.rs) prompt. The files are managed by `roles/shell`:
 
-| File | Purpose |
-|---|---|
-| `~/.zshenv` | Read by *every* zsh — puts the mise **shims** on `PATH`, so `ssh debian-ssh 'java --version'` just works |
-| `/etc/zsh/zprofile` | Login shells — sources `/etc/profile`, so `/etc/profile.d/*.sh` (incl. `tart-provision.sh` from `tart-ctl.sh provision`) applies to zsh as well |
-| `~/.zshrc` | Interactive shells — `compinit`, full `mise activate zsh` (per-directory tool switching, `JAVA_HOME`), `starship init zsh`, aliases; sources `~/.zshrc.local` if present |
-| `~/.config/starship.toml` | Prompt layout (OS · path · git · venv · java · node · docker │ memory · duration · time) — copied from `roles/shell/files/starship.toml` |
-| `/usr/local/share/zsh/site-functions/_*` | Generated zsh completions for mise, gh, docker, uv, ruff, starship |
-| `/etc/bash_completion.d/*` | The same completions for bash |
+| File                                     | Purpose                                                                                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `~/.zshenv`                              | Read by _every_ zsh — puts the mise **shims** on `PATH`, so `ssh debian-ssh 'java --version'` just works                                                                 |
+| `/etc/zsh/zprofile`                      | Login shells — sources `/etc/profile`, so `/etc/profile.d/*.sh` (incl. `tart-provision.sh` from `tart-ctl.sh provision`) applies to zsh as well                          |
+| `~/.zshrc`                               | Interactive shells — `compinit`, full `mise activate zsh` (per-directory tool switching, `JAVA_HOME`), `starship init zsh`, aliases; sources `~/.zshrc.local` if present |
+| `~/.config/starship.toml`                | Prompt layout (OS · path · git · venv · java · node · docker │ memory · duration · time) — copied from `roles/shell/files/starship.toml`                                 |
+| `/usr/local/share/zsh/site-functions/_*` | Generated zsh completions for mise, gh, docker, uv, ruff, starship                                                                                                       |
+| `/etc/bash_completion.d/*`               | The same completions for bash                                                                                                                                            |
 
 The prompt uses [Nerd Font](https://www.nerdfonts.com) glyphs — install one in your **host** terminal (e.g. `brew install --cask font-jetbrains-mono-nerd-font`) or the icons render as boxes.
 
@@ -439,6 +439,7 @@ IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore 
 6. Click **Connect** — IntelliJ downloads IDE backend to VM, opens remote session
 
 **Benefits**:
+
 - Full IDE runs locally, only project files on VM
 - Low latency, UI feels native
 - VM resources (Java, Maven, Gradle, Docker) available to IDE
@@ -461,6 +462,7 @@ Then configure IntelliJ to use remote SDK:
 4. Point to the JDK path reported by `mise where java` on the VM
 
 **Benefits**:
+
 - Files stay on host (easier backup, local git)
 - Builds/tests run on VM resources
 
@@ -554,6 +556,7 @@ ls -la /mnt/shared/
 ```
 
 **Common issues**:
+
 - **VM not started with a share**: `tart-ctl.sh start` only passes `--dir` when `TCTL_HOST_SHARE_DIR` is set in `.tart-ctl-env`. Verify the variable is set and the path exists on the host.
 - **Wrong mount tag**: Tart uses a single fixed tag `com.apple.virtio-fs.automount` for all shares — do not use the share name as the mount device.
 - **`dmesg` shows `tag <name> not found`**: Confirms the wrong tag is being used — switch to `com.apple.virtio-fs.automount`.

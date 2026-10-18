@@ -4,7 +4,7 @@ shell_login_shell: /bin/zsh
 
 # Where generated completions are installed
 shell_bash_completion_dir: /etc/bash_completion.d
-shell_zsh_completion_dir: /usr/local/share/zsh/site-functions # in Debian's default $fpath
+shell_zsh_completion_dir: /usr/local/share/zsh/site-functions  # in Debian's default $fpath
 
 # CLIs that can emit their own completion scripts (run as devbox in a login shell,
 # so mise-managed tools are found). The `name` is used as file name.
@@ -32,6 +32,6 @@ shell_completions:
 shell_verify_commands:
   - zsh --version
   - starship --version
-  - zsh -c 'java --version' # non-interactive zsh → mise shims via ~/.zshenv
-  - zsh -lc 'java --version' # login zsh → /etc/profile re-sets PATH, mise.sh re-adds shims
-  - zsh -lic 'whence -w prompt_starship_precmd' # interactive zsh → ~/.zshrc loaded, starship hooked
+  - zsh -c 'java --version'  # non-interactive zsh → mise shims via ~/.zshenv
+  - zsh -lc 'java --version'  # login zsh → /etc/profile re-sets PATH, mise.sh re-adds shims
+  - zsh -lic 'whence -w prompt_starship_precmd'  # interactive zsh → ~/.zshrc loaded, starship hooked
