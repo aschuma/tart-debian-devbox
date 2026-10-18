@@ -1,18 +1,15 @@
 ---
-- name: Check if GitHub Copilot CLI is installed
-  ansible.builtin.command: gh copilot --version
-  register: copilot_check
+- name: Check if @github/copilot is installed
+  become_user: "{{ devbox_user }}"
+  ansible.builtin.command: bash -lc 'copilot --version'
+  register: copilot_cli_check
   failed_when: false
   changed_when: false
 
-- name: Install GitHub Copilot CLI
-  ansible.builtin.shell: |
-    export NVM_DIR="{{ copilot_cli_nvm_dir }}"
-    source "$NVM_DIR/nvm.sh"
-    npm install -g @github/copilot
-  args:
-    executable: /bin/bash
-  async: 300
+- name: Install @github/copilot
+  become_user: "{{ devbox_user }}"
+  ansible.builtin.command: bash -lc 'npm install -g @github/copilot'
+  async: 600
   poll: 10
-  when: copilot_check.rc != 0
-  changed_when: copilot_check.rc != 0
+  when: copilot_cli_check.rc != 0
+  changed_when: true

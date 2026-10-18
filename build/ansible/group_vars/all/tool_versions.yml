@@ -12,6 +12,7 @@
 
 mise_runtimes:
   java: "temurin-25"
+  node: "lts"
   gradle: "latest"
   maven: "latest"
   kotlin: "latest"

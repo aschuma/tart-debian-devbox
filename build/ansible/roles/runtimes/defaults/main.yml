@@ -2,6 +2,9 @@
 # Commands used to verify the runtimes after installation (login shell, devbox user)
 runtimes_verify_commands:
   - java --version
+  - node --version
+  - npm --version
+  - npx --version
   - gradle --version
   - mvn --version
   - kotlin -version
