@@ -314,6 +314,7 @@ Edit `.tart-ctl-env` in your project root. The key variables to configure per pr
 |---|---|
 | `TCTL_VM_NAME` | Name of the Tart VM to manage (matches the image name built by Packer) |
 | `TCTL_HOST_SHARE_DIR` | Host directory mounted into the running VM via virtiofs |
+| `TCTL_SSH_USER` | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged** |
 | `TCTL_IDENTITY_FILE` | Path to your SSH private key — **keep unchanged**; also used during image creation |
 
 ```bash
@@ -325,7 +326,7 @@ TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"   # do not change
 
 > **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`). Changing it here without rebuilding the image will break SSH access.
 
-The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is picked up by the `provision` command and pushed into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM.
+The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is picked up by the `provision` command and pushed into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. If a **`.env.local`** exists next to it, it is used instead of `.env` — keep shared defaults in `.env` (committed) and personal overrides in `.env.local` (gitignored).
 
 ### Usage
 
@@ -360,7 +361,7 @@ The `provision` command executes all scripts in `.tart-ctl-provision.d/` in alph
 | Script | What it does |
 |---|---|
 | `10_mount-share.sh` | Mounts the host virtiofs share at `/mnt/shared` inside the VM |
-| `20_init-env.sh` | Pushes `.env` into the VM as `/etc/profile.d/tart-provision.sh` |
+| `20_init-env.sh` | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
 
 Add your own numbered scripts to extend provisioning. All `TCTL_*` variables from `.tart-ctl-env` are available as environment variables inside each script.
 
@@ -550,6 +551,7 @@ ls -la /mnt/shared/
 │   ├── tart-ctl.sh                 # Control script — install to $PATH
 │   ├── .tart-ctl-env               # Per-project config (VM name, share dir, SSH user devbox)
 │   ├── .env                        # Project env vars pushed into the VM
+│   ├── .env.local                  # Personal overrides (takes precedence over .env)
 │   └── .tart-ctl-provision.d/      # Provisioning steps run by `tart-ctl.sh provision`
 │       ├── 10_mount-share.sh       # Mount host virtiofs share at /mnt/shared
 │       └── 20_init-env.sh          # Push .env into VM's /etc/profile.d/
