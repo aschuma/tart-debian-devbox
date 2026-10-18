@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Central tool version registry — rendered into the devbox user's global
+# ~/.config/mise/config.toml by the mise role and installed by the runtimes
+# and cli_tools roles.
+#
+# Values are either a mise version spec ("21", "lts", "latest", "temurin-25")
+# or a mapping with `version` plus backend options (see mise docs).
+# Tool names are mise registry short names or explicit backends
+# (github:owner/repo, npm:package, aqua:owner/repo, ...).
+# =============================================================================
+
+mise_runtimes:
+  java: "temurin-25"
+  gradle: "latest"
+  maven: "latest"
+  kotlin: "latest"
+  "github:oracle/graalpython":
+    version: "latest"
+    version_prefix: "graal-"
+    asset_pattern: "graalpy*-community-{version}-linux-aarch64.tar.gz"
+
+mise_cli_tools: {}

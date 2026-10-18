@@ -1,0 +1,8 @@
+---
+# Commands used to verify the runtimes after installation (login shell, devbox user)
+runtimes_verify_commands:
+  - java --version
+  - gradle --version
+  - mvn --version
+  - kotlin -version
+  - graalpy --version

@@ -13,6 +13,6 @@ mise_trusted_config_paths:
   - /mnt/shared
   - "{{ devbox_home }}"
 
-# Tools written to the global config ([tools] section). Values are either a
-# version string or a mapping with `version` plus backend-specific options.
-mise_tools: {}
+# Tools written to the global config ([tools] section) — see
+# group_vars/all/tool_versions.yml for the definitions.
+mise_tools: "{{ mise_runtimes | default({}) | combine(mise_cli_tools | default({})) }}"
