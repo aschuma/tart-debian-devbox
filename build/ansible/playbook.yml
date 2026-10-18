@@ -29,6 +29,9 @@
     - role: common_tools
       tags: [tools]
 
+    - role: mise
+      tags: [mise]
+
     - role: nvm
       tags: [nvm]
 

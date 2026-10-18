@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  description: Installs mise (polyglot tool version manager) and configures it for the devbox user
+  min_ansible_version: "2.14"
+
+dependencies: []
