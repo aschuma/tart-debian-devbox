@@ -1,2 +1,5 @@
 local/
 local/**
+
+# ansible-lint / ansible-galaxy install collections here
+.ansible/

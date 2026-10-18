@@ -1,6 +1,6 @@
 # Packer + Tart + Ansible: Debian 12 Dev VM
 
-Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A single `devbox` user, Docker, and a [mise](https://mise.jdx.dev)-managed toolchain (Java 25, Node.js LTS, Gradle, Maven, Kotlin, GraalPy, gh, aws-cli, terraform, packer, uv, acli, GitHub Copilot CLI, Codex CLI, OpenCode).
+Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A single `devbox` user, Docker, and a [mise](https://mise.jdx.dev)-managed toolchain (Java 25, Node.js LTS, Gradle, Maven, Kotlin, Python 3.13, GraalPy, gh, aws-cli, terraform, packer, uv, acli, GitHub Copilot CLI, Codex CLI, OpenCode).
 
 - [Tart](https://tart.run/) — virtual machine manager for Apple Silicon
 - [Cirrus Labs Debian Base Image](https://github.com/cirruslabs/linux-image-templates) — upstream Tart VM images
@@ -43,7 +43,7 @@ This project includes content generated with the assistance of artificial intell
 | `common_tools` | `common-tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox` |
 | `docker` | `docker` | Docker CE + Buildx + Compose plugin from the official Docker apt repo |
 | `mise` | `mise` | Installs mise from its apt repo, shell activation, generates the global mise config |
-| `runtimes` | `runtimes` | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, GraalPy |
+| `runtimes` | `runtimes` | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, Python, GraalPy |
 | `cli_tools` | `cli-tools` | `mise install` of gh, aws-cli, terraform, packer, uv, acli, copilot, codex, opencode |
 | `verify` | `verify` | Final gate: `mise doctor`, every `<tool> --version`, docker, sudo, group membership — **the build fails if any check fails** |
 
@@ -80,7 +80,7 @@ docker ps        # works without sudo
 |---|---|---|
 | Runtimes | Java (Temurin 25), Node.js (LTS, with npm/npx), Kotlin | mise |
 | Build tools | Gradle, Maven | mise |
-| Python | GraalPy (community), uv | mise |
+| Python | CPython 3.13 (`python`, `pip`), GraalPy (community), uv | mise |
 | Cloud / infra | aws-cli, terraform, packer | mise |
 | Dev CLIs | gh (GitHub CLI), acli (Atlassian CLI) | mise |
 | AI assistants | GitHub Copilot CLI (`copilot`), Codex CLI (`codex`), OpenCode (`opencode`) | mise |
@@ -103,6 +103,7 @@ mise_runtimes:
   gradle: "latest"
   maven: "latest"
   kotlin: "latest"
+  python: "3.13"
   "github:oracle/graalpython":
     version: "latest"
     version_prefix: "graal-"

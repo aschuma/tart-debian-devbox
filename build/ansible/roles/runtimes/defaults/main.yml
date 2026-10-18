@@ -8,4 +8,6 @@ runtimes_verify_commands:
   - gradle --version
   - mvn --version
   - kotlin -version
+  - python --version
+  - pip --version
   - graalpy --version

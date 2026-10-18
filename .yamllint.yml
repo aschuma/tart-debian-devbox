@@ -9,3 +9,5 @@ rules:
   comments-indentation: disable
   braces:
     max-spaces-inside: 1
+ignore: |
+  .ansible/

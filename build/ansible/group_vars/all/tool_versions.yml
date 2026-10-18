@@ -24,6 +24,8 @@ mise_runtimes:
   gradle: "latest"
   maven: "latest"
   kotlin: "latest"
+  # CPython from prebuilt binaries (no compiler needed); becomes `python`/`pip`
+  python: "3.13"
   "github:oracle/graalpython":
     version: "latest"
     version_prefix: "graal-"
