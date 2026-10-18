@@ -24,6 +24,8 @@
   become_user: "{{ devbox_user }}"
   ansible.builtin.command: >-
     bash -lc 'mise install --yes {{ mise_missing_tools | map('quote') | join(' ') }}'
+  # Forward a GitHub token from the controller (if set) to avoid API rate limits
+  environment: "{{ {'MISE_GITHUB_TOKEN': lookup('env', 'MISE_GITHUB_TOKEN')} if lookup('env', 'MISE_GITHUB_TOKEN') else {} }}"
   async: 3600
   poll: 15
   when: mise_missing_tools | length > 0

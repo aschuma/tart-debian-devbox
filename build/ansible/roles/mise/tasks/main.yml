@@ -86,16 +86,18 @@
   ansible.builtin.debug:
     msg: "{{ mise_ver.stdout }}"
 
+# Informational only here: mise doctor exits 1 while configured tools are not
+# yet installed. The strict check runs in the verify role after installation.
 - name: Run mise doctor as {{ devbox_user }}
   become_user: "{{ devbox_user }}"
   ansible.builtin.command: bash -lc 'mise doctor'
   register: mise_doctor
   changed_when: false
-  failed_when: mise_doctor.rc != 0
+  failed_when: false
 
-- name: Show mise doctor output
+- name: Show mise doctor summary
   ansible.builtin.debug:
-    msg: "{{ mise_doctor.stdout_lines }}"
+    msg: "{{ mise_doctor.stdout_lines | select('match', '^(version|activated|shims_on_path|config_files|\\d+ problems).*') | list }}"
 
 - name: Clean up mise GPG key download
   ansible.builtin.file:

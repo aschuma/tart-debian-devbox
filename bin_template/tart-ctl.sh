@@ -218,12 +218,13 @@ cmd_update_ssh_config() {
   chmod 600 "${TCTL_SSH_CONFIG}"
 
   if grep -q "^Host ${TCTL_VM_NAME}$" "${TCTL_SSH_CONFIG}"; then
-    # Update HostName in existing block (BSD & GNU sed compatible via temp file)
+    # Update HostName and User in existing block (BSD & GNU awk compatible via temp file)
     local tmpfile
     tmpfile="$(mktemp)"
-    awk -v host="${TCTL_VM_NAME}" -v ip="${ip}" '
+    awk -v host="${TCTL_VM_NAME}" -v ip="${ip}" -v user="${TCTL_SSH_USER}" '
       /^Host / { in_block = ($2 == host) }
       in_block && /^[[:space:]]+HostName / { sub(/HostName .*/, "HostName " ip) }
+      in_block && /^[[:space:]]+User / { sub(/User .*/, "User " user) }
       { print }
     ' "${TCTL_SSH_CONFIG}" > "${tmpfile}"
     mv "${tmpfile}" "${TCTL_SSH_CONFIG}"
@@ -237,6 +238,7 @@ Host ${TCTL_VM_NAME}
     HostName ${ip}
     User ${TCTL_SSH_USER}
     IdentityFile ${TCTL_IDENTITY_FILE}
+    IdentitiesOnly yes
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     RemoteForward 1080 127.0.0.1:1080

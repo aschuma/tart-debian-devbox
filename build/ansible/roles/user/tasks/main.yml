@@ -7,9 +7,12 @@
     state: present
     update_cache: true
 
+# password '*' = no password login but account NOT locked; the default '!'
+# marks the account locked and sshd then refuses public-key auth as well.
 - name: Create {{ devbox_user }} user
   ansible.builtin.user:
     name: "{{ devbox_user }}"
+    password: '*'
     shell: /bin/bash
     groups: sudo
     append: true
