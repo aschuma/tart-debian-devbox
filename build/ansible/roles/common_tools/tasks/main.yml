@@ -17,6 +17,7 @@
       - rsync
       - gnupg
       - acl
+      - bash-completion
       - ca-certificates
       - lsb-release
       - apt-transport-https
@@ -26,6 +27,7 @@
     state: present
 
 - name: Configure Git defaults for {{ devbox_user }}
+  become: true
   become_user: "{{ devbox_user }}"
   community.general.git_config:
     name: "{{ item.name }}"

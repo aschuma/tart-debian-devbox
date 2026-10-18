@@ -61,6 +61,11 @@
     group: "{{ devbox_user }}"
     mode: '0644'
 
+- name: Install bash completion for mise
+  ansible.builtin.shell: mise completion bash > /etc/bash_completion.d/mise
+  args:
+    creates: /etc/bash_completion.d/mise
+
 - name: Create mise config directory
   ansible.builtin.file:
     path: "{{ mise_config_dir }}"
@@ -89,6 +94,7 @@
 # Informational only here: mise doctor exits 1 while configured tools are not
 # yet installed. The strict check runs in the verify role after installation.
 - name: Run mise doctor as {{ devbox_user }}
+  become: true
   become_user: "{{ devbox_user }}"
   ansible.builtin.command: bash -lc 'mise doctor'
   register: mise_doctor

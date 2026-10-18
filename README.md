@@ -40,7 +40,7 @@ This project includes content generated with the assistance of artificial intell
 | Role | Tag | What it does |
 |---|---|---|
 | `user` | `user` | Creates `devbox` (sudo, docker, SSH key), removes legacy `deploy`, hardens `sshd` |
-| `common_tools` | `tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox` |
+| `common_tools` | `common-tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox` |
 | `docker` | `docker` | Docker CE + Buildx + Compose plugin from the official Docker apt repo |
 | `mise` | `mise` | Installs mise from its apt repo, shell activation, generates the global mise config |
 | `runtimes` | `runtimes` | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, GraalPy |
@@ -183,6 +183,22 @@ Config files under `/mnt/shared` (the virtiofs host share) and `/home/devbox` ar
 
 ---
 
+## Migrating from the pre-mise image
+
+If you built an image before the mise refactor:
+
+| Before | Now |
+|---|---|
+| Users `admin` + `deploy` | Single `devbox` user; `admin` is build-only |
+| Tools under `/opt/{jdk,gradle,maven,graalpy,nvm,uv}` | `~/.local/share/mise/installs/<tool>/<version>` for `devbox` |
+| Versions in `roles/<tool>/vars/main.yml` | `group_vars/all/tool_versions.yml` |
+| Tags `ssh tools java gradle maven graalpy nvm uv acli copilot-cli opencode` | `user common-tools docker mise runtimes cli-tools verify` |
+| `gh copilot` | `copilot` (standalone GitHub Copilot CLI) |
+
+Rebuild the image, set `TCTL_SSH_USER="devbox"` in your `.tart-ctl-env`, then run `tart-ctl.sh update-ssh-config` once to rewrite the `User` line in `~/.ssh/config`.
+
+---
+
 ## Build the VM
 
 ```bash
@@ -248,7 +264,7 @@ ansible-playbook playbook.yml \
   --extra-vars "ansible_user=devbox ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
-Available tags: `user`, `tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `verify`
+Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `verify`
 
 > `StrictHostKeyChecking=no` is required because the VM gets a new IP (and thus an unknown host key) each time it starts. When connecting manually, add `-o IdentitiesOnly=yes` if your ssh-agent holds several keys — `sshd` allows only 3 authentication attempts.
 
@@ -267,6 +283,7 @@ Available tags: `user`, `tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `ver
 | List tools in the VM | `just tools` (→ `mise ls`) |
 | Upgrade tools on a VM | `just reprovision mise,runtimes,cli-tools` or `mise upgrade` inside the VM |
 | Validate templates | `just validate` |
+| Lint Ansible/YAML | `just lint` (also runs in GitHub Actions) |
 | Delete image | `just clean` (→ `tart delete`) |
 
 The `justfile` is a thin wrapper around `build/provision.sh`, `tart-ctl.sh` and `ansible-playbook`; every recipe can be run by hand. `just start/stop/provision/ssh` must be run from a directory that has a `.tart-ctl-env` (see [VM Instance Control](#vm-instance-control-tart-ctl)).

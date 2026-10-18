@@ -28,7 +28,7 @@
       tags: [user]
 
     - role: common_tools  # base apt packages, git defaults
-      tags: [tools]
+      tags: [common-tools]
 
     - role: docker        # Docker CE + Compose plugin (apt)
       tags: [docker]
@@ -52,6 +52,29 @@
       ansible.builtin.apt:
         autoclean: true
         autoremove: true
+      tags: [always]
+
+    - name: Remove apt lists and tool caches
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/apt/lists
+        - "{{ devbox_home }}/.cache"
+        - "{{ devbox_home }}/.npm"
+      tags: [always]
+
+    - name: Clear mise download cache
+      become: true
+      become_user: "{{ devbox_user }}"
+      ansible.builtin.command: mise cache clear
+      changed_when: true
+      tags: [always]
+
+    - name: Trim filesystem so the image compacts
+      ansible.builtin.command: fstrim -av
+      changed_when: false
+      failed_when: false
       tags: [always]
 
     - name: Provisioning complete

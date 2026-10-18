@@ -54,8 +54,7 @@ build {
       "--extra-vars", "ansible_connection=ssh",
       "--extra-vars", "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'",
       "--extra-vars", "user_ssh_key_path=${var.ssh_key_path}",
-      "--connection=paramiko",
-      "-v"   # verbose — remove in prod
+      "--connection=paramiko"
     ]
   }
 }

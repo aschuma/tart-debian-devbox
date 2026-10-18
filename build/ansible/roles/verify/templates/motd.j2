@@ -1,0 +1,14 @@
+
+  Debian 12 devbox — tools managed by mise (https://mise.jdx.dev)
+
+  Image built : {{ ansible_date_time.iso8601 }}
+  User        : {{ devbox_user }} (sudo without password, docker group)
+  Runtimes    : {{ mise_runtimes.keys() | join(', ') }}
+  CLI tools   : {{ mise_cli_tools.keys() | join(', ') }}
+
+  mise ls / mise doctor      list tools, diagnose activation
+  mise use -g <tool>@<ver>   change a global version
+  mise upgrade               update tools pinned to "latest"
+
+  Non-interactive ssh commands need a login shell:  ssh devbox 'bash -lc "java --version"'
+

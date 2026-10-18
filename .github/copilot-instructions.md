@@ -40,7 +40,7 @@ ansible-playbook playbook.yml \
   --extra-vars "ansible_user=devbox ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
-Available tags: `user`, `tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `verify`
+Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `verify`
 
 ## Architecture
 
