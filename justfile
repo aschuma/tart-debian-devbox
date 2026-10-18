@@ -43,7 +43,7 @@ stop:
 status:
     {{tart_ctl}} status
 
-# Mount the host share and push .env into the VM
+# Push .env into the VM (the host share is auto-mounted at boot)
 provision:
     {{tart_ctl}} provision
 

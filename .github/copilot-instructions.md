@@ -72,7 +72,6 @@ bin_template/
   .tart-ctl-env              # TCTL_VM_NAME, TCTL_SSH_USER=devbox, TCTL_IDENTITY_FILE, TCTL_HOST_SHARE_DIR
   .env / .env.local          # Project env vars pushed into the VM
   .tart-ctl-provision.d/
-    10_mount-share.sh        # Mounts virtiofs share on running VM
     20_init-env.sh           # Pushes .env → /etc/profile.d/tart-provision.sh on VM
 ```
 
@@ -118,10 +117,10 @@ ssh debian-ssh 'bash -c "java --version"'     # Wrong — bash without profile
 
 ### virtiofs Sharing
 
-The Tart virtiofs mount tag is always `com.apple.virtio-fs.automount` regardless of the `--dir=NAME:PATH` share name. Each share name becomes a subdirectory under the mount point:
+The Tart virtiofs mount tag is always `com.apple.virtio-fs.automount` regardless of the `--dir=NAME:PATH` share name. The image mounts it on first access via `/etc/fstab` (`roles/common_tools`: `noauto,x-systemd.automount,nofail`, so booting without a share is clean). Each share name becomes a subdirectory under the mount point:
 
 ```bash
-sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
+findmnt /mnt/shared
 ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 ```
 

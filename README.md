@@ -283,7 +283,7 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 | Build image               | `just build`                                                               |
 | Clone image for a project | `tart clone debian-ssh my-project`                                         |
 | Start / stop / status     | `just start`, `just stop`, `just status` (→ `tart-ctl.sh`)                 |
-| Mount share + push `.env` | `just provision`                                                           |
+| Push `.env` into the VM   | `just provision`                                                           |
 | Shell                     | `just ssh`                                                                 |
 | Update `~/.ssh/config`    | `just ssh-config`                                                          |
 | List tools in the VM      | `just tools` (→ `mise ls`)                                                 |
@@ -336,7 +336,7 @@ Edit `.tart-ctl-env` in your project root. The key variables to configure per pr
 | Variable              | Description                                                                           |
 | --------------------- | ------------------------------------------------------------------------------------- |
 | `TCTL_VM_NAME`        | Name of the Tart VM to manage (matches the image name built by Packer)                |
-| `TCTL_HOST_SHARE_DIR` | Host directory mounted into the running VM via virtiofs                               |
+| `TCTL_HOST_SHARE_DIR` | Host directory shared with the VM; auto-mounted at `/mnt/shared/workspace`            |
 | `TCTL_SSH_USER`       | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged** |
 | `TCTL_IDENTITY_FILE`  | Path to your SSH private key — **keep unchanged**; also used during image creation    |
 
@@ -371,7 +371,7 @@ The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is 
 cd ~/Projects/my-project   # or any subdirectory
 
 tart-ctl.sh up             # start the VM
-tart-ctl.sh provision      # mount share + push .env into the VM
+tart-ctl.sh provision      # push .env into the VM
 tart-ctl.sh ssh            # open a shell inside the VM
 
 tart-ctl.sh down           # shut down when done
@@ -381,10 +381,11 @@ tart-ctl.sh down           # shut down when done
 
 The `provision` command executes all scripts in `.tart-ctl-provision.d/` in alphabetical order. The bundled steps are:
 
-| Script              | What it does                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `10_mount-share.sh` | Mounts the host virtiofs share at `/mnt/shared` inside the VM                                 |
-| `20_init-env.sh`    | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
+| Script           | What it does                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `20_init-env.sh` | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
+
+The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tart-ctl.sh up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
 
 Add your own numbered scripts to extend provisioning. All `TCTL_*` variables from `.tart-ctl-env` are available as environment variables inside each script.
 
@@ -449,9 +450,8 @@ IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore 
 Set `TCTL_HOST_SHARE_DIR` in `.tart-ctl-env` to your local project path, then:
 
 ```bash
-tart-ctl.sh up          # starts VM with the host share attached
-tart-ctl.sh provision   # mounts the share at /mnt/shared inside the VM
-tart-ctl.sh ssh         # open a shell — project files are at /mnt/shared/
+tart-ctl.sh up          # starts VM with the host share attached (auto-mounted)
+tart-ctl.sh ssh         # open a shell — project files are at /mnt/shared/workspace/
 ```
 
 Then configure IntelliJ to use remote SDK:
@@ -535,24 +535,19 @@ tart delete debian-ssh
 
 ### Shared Directory Not Visible
 
-If `tart-ctl.sh provision` runs `10_mount-share.sh` but files aren't visible inside the VM:
+The share is mounted on first access via `/etc/fstab` (systemd automount). If files aren't visible inside the VM:
 
 ```bash
-# 1. Verify virtiofs support
 ssh debian-ssh
-cat /proc/filesystems | grep virtiofs
-# Should show: nodev	virtiofs
+# 1. Is it mounted?
+findmnt /mnt/shared
 
-# 2. Check if already mounted
-mount | grep virtiofs
-findmnt -t virtiofs
+# 2. If not — the fstab entry is there, so a manual mount shows the real error
+grep virtiofs /etc/fstab
+sudo mount /mnt/shared
 
-# 3. If not mounted — use the fixed Tart tag (NOT the share name)
-sudo mkdir -p /mnt/shared
-sudo mount -t virtiofs com.apple.virtio-fs.automount /mnt/shared
-
-# 4. Your files are in a subdirectory matching the share directory name
-ls -la /mnt/shared/
+# 3. Your files are in a subdirectory named after the share (workspace)
+ls -la /mnt/shared/workspace/
 ```
 
 **Common issues**:
@@ -593,7 +588,6 @@ ls -la /mnt/shared/
 │   ├── .env                        # Project env vars pushed into the VM
 │   ├── .env.local                  # Personal overrides (takes precedence over .env)
 │   └── .tart-ctl-provision.d/      # Provisioning steps run by `tart-ctl.sh provision`
-│       ├── 10_mount-share.sh       # Mount host virtiofs share at /mnt/shared
 │       └── 20_init-env.sh          # Push .env into VM's /etc/profile.d/
 └── README.md
 ```

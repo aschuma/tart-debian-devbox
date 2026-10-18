@@ -6,3 +6,8 @@ devbox_home: "/home/{{ devbox_user }}"
 
 # Debian architecture of the VM (Apple Silicon → arm64)
 target_arch: arm64
+
+# Always use the system interpreter. devbox's PATH starts with the mise shims
+# (python3 → mise-managed CPython), which must not be used for Ansible modules
+# (interpreter discovery would pick the shim, and it hangs under sudo).
+ansible_python_interpreter: /usr/bin/python3
