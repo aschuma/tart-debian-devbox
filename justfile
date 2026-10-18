@@ -47,6 +47,10 @@ status:
 provision:
     {{tart_ctl}} provision
 
+# Show the effective env that provision would push (pass --diff to compare with the VM)
+env *ARGS:
+    {{tart_ctl}} env {{ARGS}}
+
 # Open an interactive SSH session in the VM
 ssh:
     {{tart_ctl}} ssh

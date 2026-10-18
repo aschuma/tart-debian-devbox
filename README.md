@@ -366,6 +366,7 @@ TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
 | `tart-ctl.sh stop`              | `down`  | Stop the running VM                             |
 | `tart-ctl.sh status`            | `st`    | Show whether the VM is running or stopped       |
 | `tart-ctl.sh provision`         | `pr`    | Push `.env` into the VM's `/etc/profile.d/`     |
+| `tart-ctl.sh env [--diff]`      |         | Show the effective env; `--diff` compares with VM |
 | `tart-ctl.sh ssh`               | `sh`    | Open an interactive SSH shell in the VM         |
 | `tart-ctl.sh ip`                |         | Print the VM's current IP address               |
 | `tart-ctl.sh update-ssh-config` | `usc`   | Update `~/.ssh/config` with the VM's current IP |
@@ -385,6 +386,13 @@ tart-ctl.sh down           # shut down when done
 ### What `provision` Does
 
 The `provision` command reads `.env`, then `.env.local`, then `TCTL_ENV_FILE` (whichever exist) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
+
+To inspect the result **before** pushing, use `tart-ctl.sh env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tart-ctl.sh env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
+
+```bash
+tart-ctl.sh env            # what would be pushed, and from which file
+tart-ctl.sh env --diff     # is the VM up to date?
+```
 
 The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tart-ctl.sh up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
 

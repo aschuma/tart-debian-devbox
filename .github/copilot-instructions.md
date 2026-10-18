@@ -68,7 +68,7 @@ build/
       verify/                # final gate: groups, mise doctor, all *_verify_commands, docker, sudo
 
 bin_template/
-  tart-ctl.sh                # start/stop/status/provision/ssh/ip/update-ssh-config
+  tart-ctl.sh                # start/stop/status/provision/env/ssh/ip/update-ssh-config
   .tart-ctl-env              # TCTL_VM_NAME, TCTL_SSH_USER=devbox, TCTL_IDENTITY_FILE, TCTL_HOST_SHARE_DIR
   .env / .env.local          # Project env vars pushed into the VM by `tart-ctl.sh provision`
 ```
