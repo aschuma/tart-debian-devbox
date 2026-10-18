@@ -348,9 +348,9 @@ TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"   # do not change
 
 > **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`). Changing it here without rebuilding the image will break SSH access.
 
-The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is picked up by the `provision` command and pushed into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. If a **`.env.local`** exists next to it, it is used instead of `.env` — keep shared defaults in `.env` (committed) and personal overrides in `.env.local` (gitignored).
+The optional **`.env`** and **`.env.local`** files (plain `KEY=VALUE` pairs) in the same directory are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: `.env` holds the shared defaults (committed), `.env.local` overrides only the keys you want to change (gitignored) — it does not need to repeat the rest.
 
-The env file only needs to be *readable* — it may be a symlink, a FIFO, or a virtual file provided by a secrets manager (e.g. 1Password Environments); it is streamed exactly once and never stat'ed or re-read. To use a different source, set `TCTL_ENV_FILE`:
+Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read. `TCTL_ENV_FILE` adds an optional third layer on top, which is handy for injecting secrets:
 
 ```bash
 TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
@@ -384,7 +384,7 @@ tart-ctl.sh down           # shut down when done
 
 ### What `provision` Does
 
-The `provision` command reads `.env.local` (or `.env` as fallback) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes the result over SSH to `/etc/profile.d/tart-provision.sh` in the VM. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever `.env` changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
+The `provision` command reads `.env`, then `.env.local`, then `TCTL_ENV_FILE` (whichever exist) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
 The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tart-ctl.sh up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
 
@@ -585,6 +585,6 @@ ls -la /mnt/shared/workspace/
 │   ├── tart-ctl.sh                 # Control script — install to $PATH
 │   ├── .tart-ctl-env               # Per-project config (VM name, share dir, SSH user devbox)
 │   ├── .env                        # Project env vars pushed into the VM by `tart-ctl.sh provision`
-│   └── .env.local                  # Personal overrides (takes precedence over .env)
+│   └── .env.local                  # Personal overrides, layered on top of .env
 └── README.md
 ```
