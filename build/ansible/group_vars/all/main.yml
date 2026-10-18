@@ -1,0 +1,5 @@
+---
+# Single developer account on the VM. The base image's `admin` account is only
+# used by Packer/Ansible during the build and is left untouched.
+devbox_user: devbox
+devbox_home: "/home/{{ devbox_user }}"

@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  description: Creates the devbox user (sudo, SSH key auth) and hardens sshd
+  min_ansible_version: "2.14"
+
+dependencies: []

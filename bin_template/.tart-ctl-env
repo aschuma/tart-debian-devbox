@@ -7,7 +7,7 @@ TCTL_VM_NAME="debian-ssh"
 
 # ── SSH / host settings ───────────────────────────────────────────────────────
 # Do not touch these unless you know what you're doing — tart-ctl relies on these settings to manage the VM.
-TCTL_SSH_USER="admin"
+TCTL_SSH_USER="devbox"
 TCTL_SSH_CONFIG="${HOME}/.ssh/config"
 TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"
 

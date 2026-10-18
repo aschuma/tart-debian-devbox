@@ -17,7 +17,7 @@ variable "ssh_password" {
   default   = "admin"
   sensitive = true
 }
-variable "ssh_key_path" { default = "~/Ssh/id_ed25519_tart.pub" }
+variable "ssh_key_path" { default = "~/.ssh/id_ed25519_tart.pub" }
 
 source "tart-cli" "debian" {
   vm_base_name = "ghcr.io/cirruslabs/debian:bookworm"
@@ -53,7 +53,7 @@ build {
       "--extra-vars", "ansible_become_password=${var.ssh_password}",
       "--extra-vars", "ansible_connection=ssh",
       "--extra-vars", "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'",
-      "--extra-vars", "ssh_setup_admin_ssh_key_path=${var.ssh_key_path}",
+      "--extra-vars", "user_ssh_key_path=${var.ssh_key_path}",
       "--connection=paramiko",
       "-v"   # verbose — remove in prod
     ]

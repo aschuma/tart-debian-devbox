@@ -23,8 +23,8 @@
   # ---------------------------------------------------------------------------
   roles:
 
-    - role: ssh_setup
-      tags: [ssh]
+    - role: user
+      tags: [user]
 
     - role: common_tools
       tags: [tools]

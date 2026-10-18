@@ -18,7 +18,7 @@ This project includes content generated with the assistance of artificial intell
 ## What Gets Built
 
 - **Base**: Debian 12 Bookworm (ARM64) from `ghcr.io/cirruslabs/debian:bookworm`
-- **Users**: `admin` + `deploy` (both with SSH key auth, sudo access)
+- **Users**: single developer account `devbox` (SSH key auth, passwordless sudo, docker group). The base image's `admin` account is only used by Packer during the build.
 - **Docker**: Docker CE + Compose plugin (latest from official Debian repo)
 - **Java**: OpenJDK (Adoptium/Temurin) at `/opt/jdk` — version configured via `java_build` variable
 - **Build Tools**: Gradle + Maven — versions configured via `gradle_version` and `maven_version` variables
@@ -80,9 +80,9 @@ cd build/ansible
 ansible-playbook playbook.yml \
   -i "$(tart ip debian-ssh)," \
   --private-key ~/.ssh/id_ed25519_tart \
-  -u admin \
+  -u devbox \
   --become \
-  --extra-vars "ansible_user=admin ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
+  --extra-vars "ansible_user=devbox ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
 To apply only specific roles, use `--tags`:
@@ -92,13 +92,13 @@ To apply only specific roles, use `--tags`:
 ansible-playbook playbook.yml \
   -i "$(tart ip debian-ssh)," \
   --private-key ~/.ssh/id_ed25519_tart \
-  -u admin \
+  -u devbox \
   --become \
   --tags nvm,acli \
-  --extra-vars "ansible_user=admin ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
+  --extra-vars "ansible_user=devbox ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
-Available tags: `ssh`, `tools`, `docker`, `java`, `gradle`, `maven`, `graalpy`, `nvm`, `acli`, `copilot-cli`, `opencode`
+Available tags: `user`, `tools`, `docker`, `java`, `gradle`, `maven`, `graalpy`, `nvm`, `uv`, `acli`, `copilot-cli`, `opencode`
 
 > **Note**: `StrictHostKeyChecking=no` is required because the VM gets a new IP (and thus an unknown host key) each time it starts.
 
@@ -280,7 +280,7 @@ docker compose version
 3. **New Connection**:
    - Host: VM name from `TCTL_VM_NAME` (resolved via `~/.ssh/config`)
    - Port: `22`
-   - User: `admin` or `deploy`
+   - User: `devbox`
    - Authentication: **Key Pair**
    - Private key: `~/.ssh/id_ed25519_tart`
 4. **IDE Version**: Select latest available
@@ -306,7 +306,7 @@ Then configure IntelliJ to use remote SDK:
 
 1. Run `tart-ctl.sh update-ssh-config` so the VM name resolves in `~/.ssh/config`
 2. **File** → **Project Structure** → **SDKs** → **+** → **Add SSH SDK**
-3. Configure SSH using the VM name from `TCTL_VM_NAME`, user `admin`
+3. Configure SSH using the VM name from `TCTL_VM_NAME`, user `devbox`
 4. Point to `/opt/jdk/jdk-21.0.5+11` on the VM
 
 **Benefits**:
@@ -326,11 +326,11 @@ ssh -L 8080:localhost:8080 debian-dev
 
 ```bash
 # Sync local → VM
-rsync -avz --exclude='.git' /local/project/ debian-dev:/home/admin/project/
+rsync -avz --exclude='.git' /local/project/ debian-dev:/home/devbox/project/
 
 # Continuous watch sync (requires fswatch on Mac)
 brew install fswatch
-fswatch -o /local/project | xargs -n1 -I{} rsync -avz /local/project/ debian-dev:/home/admin/project/
+fswatch -o /local/project | xargs -n1 -I{} rsync -avz /local/project/ debian-dev:/home/devbox/project/
 ```
 
 **VS Code Remote SSH** also works:
@@ -491,7 +491,7 @@ provisioner "ansible" {
   
   extra_arguments = [
     "--connection=paramiko",  # Password auth during build
-    "--extra-vars", "ssh_setup_admin_ssh_key_path=${var.ssh_key_path}"
+    "--extra-vars", "user_ssh_key_path=${var.ssh_key_path}"
   ]
 }
 ```
