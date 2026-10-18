@@ -1,5 +1,5 @@
 ---
-mise_arch: arm64
+mise_arch: "{{ target_arch }}"
 mise_keyring: /etc/apt/keyrings/mise-archive-keyring.gpg
 mise_gpg_url: https://mise.jdx.dev/gpg-key.pub
 mise_repo_url: https://mise.jdx.dev/deb

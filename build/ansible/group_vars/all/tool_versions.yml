@@ -1,13 +1,21 @@
 ---
 # =============================================================================
-# Central tool version registry — rendered into the devbox user's global
-# ~/.config/mise/config.toml by the mise role and installed by the runtimes
-# and cli_tools roles.
+# Central tool version registry — the single place to change tool versions.
+#
+#   mise_runtimes  → installed by roles/runtimes   (tag: runtimes)
+#   mise_cli_tools → installed by roles/cli_tools  (tag: cli-tools)
+#
+# Both dicts are merged by roles/mise into the devbox user's global
+# ~/.config/mise/config.toml ([tools] section).
 #
 # Values are either a mise version spec ("21", "lts", "latest", "temurin-25")
 # or a mapping with `version` plus backend options (see mise docs).
-# Tool names are mise registry short names or explicit backends
-# (github:owner/repo, npm:package, aqua:owner/repo, ...).
+# Tool names are mise registry short names (`mise registry`) or explicit
+# backends (github:owner/repo, npm:package, aqua:owner/repo, ...).
+#
+# After changing a version: rebuild the image or reprovision with
+#   --tags mise,runtimes      (or --tags mise,cli-tools)
+# Inside the VM the same can be done ad hoc with `mise use -g <tool>@<ver>`.
 # =============================================================================
 
 mise_runtimes:

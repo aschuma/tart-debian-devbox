@@ -3,3 +3,6 @@
 # used by Packer/Ansible during the build and is left untouched.
 devbox_user: devbox
 devbox_home: "/home/{{ devbox_user }}"
+
+# Debian architecture of the VM (Apple Silicon → arm64)
+target_arch: arm64
