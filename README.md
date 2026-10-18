@@ -321,12 +321,11 @@ mv bin_template/tart-ctl.sh ~/.local/bin/tart-ctl.sh
 chmod +x ~/.local/bin/tart-ctl.sh
 ```
 
-**2. Add config to your project** — copy the environment file and provision scripts to the root of the Git repository you want to work on inside the VM:
+**2. Add config to your project** — copy the environment files to the root of the Git repository you want to work on inside the VM:
 
 ```bash
 cp bin_template/.tart-ctl-env   ~/Projects/my-project/
 cp bin_template/.env            ~/Projects/my-project/
-cp -r bin_template/.tart-ctl-provision.d/ ~/Projects/my-project/
 ```
 
 ### Configuration
@@ -360,7 +359,7 @@ The optional **`.env`** file (plain `KEY=VALUE` pairs) in the same directory is 
 | `tart-ctl.sh start`             | `up`    | Start the VM (with host share if configured)    |
 | `tart-ctl.sh stop`              | `down`  | Stop the running VM                             |
 | `tart-ctl.sh status`            | `st`    | Show whether the VM is running or stopped       |
-| `tart-ctl.sh provision`         | `pr`    | Run all scripts in `.tart-ctl-provision.d/`     |
+| `tart-ctl.sh provision`         | `pr`    | Push `.env` into the VM's `/etc/profile.d/`     |
 | `tart-ctl.sh ssh`               | `sh`    | Open an interactive SSH shell in the VM         |
 | `tart-ctl.sh ip`                |         | Print the VM's current IP address               |
 | `tart-ctl.sh update-ssh-config` | `usc`   | Update `~/.ssh/config` with the VM's current IP |
@@ -377,17 +376,11 @@ tart-ctl.sh ssh            # open a shell inside the VM
 tart-ctl.sh down           # shut down when done
 ```
 
-### Provisioning Steps (`.tart-ctl-provision.d/`)
+### What `provision` Does
 
-The `provision` command executes all scripts in `.tart-ctl-provision.d/` in alphabetical order. The bundled steps are:
-
-| Script           | What it does                                                                                  |
-| ---------------- | --------------------------------------------------------------------------------------------- |
-| `20_init-env.sh` | Pushes `.env.local` (or `.env` as fallback) into the VM as `/etc/profile.d/tart-provision.sh` |
+The `provision` command reads `.env.local` (or `.env` as fallback) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes the result over SSH to `/etc/profile.d/tart-provision.sh` in the VM. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever `.env` changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
 The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tart-ctl.sh up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
-
-Add your own numbered scripts to extend provisioning. All `TCTL_*` variables from `.tart-ctl-env` are available as environment variables inside each script.
 
 ---
 
@@ -585,9 +578,7 @@ ls -la /mnt/shared/workspace/
 ├── bin_template/                   # VM instance control (copy to your project)
 │   ├── tart-ctl.sh                 # Control script — install to $PATH
 │   ├── .tart-ctl-env               # Per-project config (VM name, share dir, SSH user devbox)
-│   ├── .env                        # Project env vars pushed into the VM
-│   ├── .env.local                  # Personal overrides (takes precedence over .env)
-│   └── .tart-ctl-provision.d/      # Provisioning steps run by `tart-ctl.sh provision`
-│       └── 20_init-env.sh          # Push .env into VM's /etc/profile.d/
+│   ├── .env                        # Project env vars pushed into the VM by `tart-ctl.sh provision`
+│   └── .env.local                  # Personal overrides (takes precedence over .env)
 └── README.md
 ```

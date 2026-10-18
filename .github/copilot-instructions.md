@@ -70,9 +70,7 @@ build/
 bin_template/
   tart-ctl.sh                # start/stop/status/provision/ssh/ip/update-ssh-config
   .tart-ctl-env              # TCTL_VM_NAME, TCTL_SSH_USER=devbox, TCTL_IDENTITY_FILE, TCTL_HOST_SHARE_DIR
-  .env / .env.local          # Project env vars pushed into the VM
-  .tart-ctl-provision.d/
-    20_init-env.sh           # Pushes .env → /etc/profile.d/tart-provision.sh on VM
+  .env / .env.local          # Project env vars pushed into the VM by `tart-ctl.sh provision`
 ```
 
 Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → shell → verify`.
@@ -132,4 +130,4 @@ ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 
 ### Environment Variables on the VM
 
-`20_init-env.sh` reads `.env` / `.env.local` and writes exports to `/etc/profile.d/tart-provision.sh` on the VM. Values are base64-encoded for safe transfer.
+`tart-ctl.sh provision` renders `.env.local` (or `.env`) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. The file persists in the VM and is sourced by every login shell (bash and zsh).
