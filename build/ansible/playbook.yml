@@ -38,12 +38,6 @@
     - role: cli_tools
       tags: [cli-tools]
 
-    - role: copilot_cli
-      tags: [copilot-cli]
-
-    - role: opencode
-      tags: [opencode]
-
     - role: docker
       tags: [docker]
 

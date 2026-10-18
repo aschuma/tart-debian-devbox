@@ -28,3 +28,7 @@ mise_cli_tools:
   packer: "latest"
   uv: "latest"
   acli: "latest"
+  # AI coding assistants
+  copilot: "latest"
+  codex: "latest"
+  opencode: "latest"

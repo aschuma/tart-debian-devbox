@@ -1,6 +1,6 @@
 ---
 galaxy_info:
-  description: Installs developer CLI tools (gh, aws-cli, terraform, packer, uv, acli, ...) via mise
+  description: Installs developer CLI tools (gh, aws-cli, terraform, packer, uv, acli, copilot, codex, opencode) via mise
   min_ansible_version: "2.14"
 
 dependencies:

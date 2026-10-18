@@ -7,3 +7,6 @@ cli_tools_verify_commands:
   - packer --version
   - uv --version
   - acli --version
+  - copilot --version
+  - codex --version
+  - opencode --version
