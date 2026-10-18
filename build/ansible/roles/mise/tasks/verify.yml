@@ -4,6 +4,7 @@
 # The play fails if any command exits non-zero.
 
 - name: Verify tools
+  become: true
   become_user: "{{ devbox_user }}"
   ansible.builtin.command: bash -lc {{ item | quote }}
   loop: "{{ mise_verify_commands }}"

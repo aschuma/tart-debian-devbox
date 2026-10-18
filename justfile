@@ -26,6 +26,11 @@ validate:
     cd build && packer validate -var-file=vars.pkrvars.hcl debian-ssh.pkr.hcl
     cd build/ansible && ansible-playbook --syntax-check -i localhost, playbook.yml
 
+# Lint Ansible and YAML (brew install ansible-lint yamllint)
+lint:
+    yamllint build/ansible .github
+    cd build/ansible && ansible-lint
+
 # Start the VM (uses .tart-ctl-env from the current project)
 start:
     {{tart_ctl}} start

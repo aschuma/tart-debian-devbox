@@ -104,6 +104,7 @@ ${BOLD}ENVIRONMENT FILE${RESET}
     Expected variables in ${ENV_FILE_NAME} (all prefixed TCTL_):
         TCTL_VM_NAME        Name of the Tart VM to manage         (required)
         TCTL_SSH_USER       SSH user inside the VM                (required for provision)
+        TCTL_REMOTE_FORWARD Optional "PORT HOST:PORT" written as RemoteForward to ~/.ssh/config
         TCTL_SSH_CONFIG     Path to SSH client config file        (required for provision)
         TCTL_IDENTITY_FILE  Path to SSH private key               (required for provision)
         TCTL_HOST_SHARE_DIR Host directory to mount into the VM   (optional)
@@ -232,6 +233,10 @@ cmd_update_ssh_config() {
     info "Updated existing '${TCTL_VM_NAME}' entry → ${ip}"
   else
     # Append a new Host block
+    local remote_forward=""
+    if [[ -n "${TCTL_REMOTE_FORWARD:-}" ]]; then
+      remote_forward="    RemoteForward ${TCTL_REMOTE_FORWARD}"
+    fi
     cat >> "${TCTL_SSH_CONFIG}" <<EOF
 
 Host ${TCTL_VM_NAME}
@@ -241,7 +246,7 @@ Host ${TCTL_VM_NAME}
     IdentitiesOnly yes
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-    RemoteForward 1080 127.0.0.1:1080
+${remote_forward}
 EOF
     info "Added new '${TCTL_VM_NAME}' entry → ${ip}"
   fi

@@ -13,3 +13,7 @@ TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"
 
 # ── Host share directory (optional — omit to start VM without a share) ────────
 # TCTL_HOST_SHARE_DIR="/Users/aschuma/Projects.Aschuma/"
+
+# ── Optional reverse port forward written to ~/.ssh/config ───────────────────
+# e.g. expose a local SOCKS proxy on port 1080 inside the VM
+# TCTL_REMOTE_FORWARD="1080 127.0.0.1:1080"

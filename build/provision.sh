@@ -11,11 +11,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # 2. Install Ansible
 # brew install ansible
 
-# 3. Init Packer plugins
+# 3. Install Ansible collections
+ansible-galaxy collection install -r ansible/requirements.yml
+
+# 4. Init Packer plugins
 packer init debian-ssh.pkr.hcl
 
-# 4. Validate the template
+# 5. Validate the template
 packer validate -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
 
-# 5. Build!
+# 6. Build!
 packer build -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
