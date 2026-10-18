@@ -35,8 +35,8 @@
     - role: runtimes
       tags: [runtimes]
 
-    - role: acli
-      tags: [acli]
+    - role: cli_tools
+      tags: [cli-tools]
 
     - role: copilot_cli
       tags: [copilot-cli]
@@ -46,9 +46,6 @@
 
     - role: docker
       tags: [docker]
-
-    - role: uv
-      tags: [uv]
 
   # ---------------------------------------------------------------------------
   post_tasks:
@@ -62,7 +59,7 @@
     - name: Provisioning complete
       ansible.builtin.debug:
         msg: >-
-          Done — runtimes via mise: {{ mise_runtimes.keys() | join(', ') }};
-          uv={{ uv_version }}
-          Docker and Atlassian CLI installed. Reboot recommended for docker group changes.
+          Done — mise runtimes: {{ mise_runtimes.keys() | join(', ') }};
+          mise CLI tools: {{ mise_cli_tools.keys() | join(', ') }};
+          Docker installed. Reboot recommended for docker group changes.
       tags: [always]

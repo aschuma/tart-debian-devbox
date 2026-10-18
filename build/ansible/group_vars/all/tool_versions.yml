@@ -21,4 +21,10 @@ mise_runtimes:
     version_prefix: "graal-"
     asset_pattern: "graalpy*-community-{version}-linux-aarch64.tar.gz"
 
-mise_cli_tools: {}
+mise_cli_tools:
+  gh: "latest"
+  aws-cli: "latest"
+  terraform: "latest"
+  packer: "latest"
+  uv: "latest"
+  acli: "latest"

@@ -1,0 +1,9 @@
+---
+# Commands used to verify the CLI tools after installation (login shell, devbox user)
+cli_tools_verify_commands:
+  - gh --version
+  - aws --version
+  - terraform --version
+  - packer --version
+  - uv --version
+  - acli --version
