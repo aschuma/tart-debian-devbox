@@ -1,6 +1,6 @@
 # Packer + Tart + Ansible: Debian 12 Dev VM
 
-Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A single `devbox` user, Docker, and a [mise](https://mise.jdx.dev)-managed toolchain (Java 25, Node.js LTS, Gradle, Maven, Kotlin, Python 3.13, GraalPy, gh, aws-cli, terraform, packer, uv, acli, GitHub Copilot CLI, Codex CLI, OpenCode).
+Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A single `devbox` user, Docker, and a [mise](https://mise.jdx.dev)-managed toolchain (Java 25, Node.js LTS, Gradle, Maven, Kotlin, Python 3.13, GraalPy, gh, aws-cli, terraform, packer, uv, ruff, acli, GitHub Copilot CLI, Codex CLI, OpenCode) in a zsh shell with a [starship](https://starship.rs) prompt.
 
 - [Tart](https://tart.run/) — virtual machine manager for Apple Silicon
 - [Cirrus Labs Debian Base Image](https://github.com/cirruslabs/linux-image-templates) — upstream Tart VM images
@@ -10,6 +10,7 @@ Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A s
 - [mise](https://mise.jdx.dev/) — polyglot tool version manager (replaces nvm, SDKMAN, manual tarballs)
 - [Eclipse Temurin](https://adoptium.net/) — OpenJDK distribution (installed by mise)
 - [GraalPy](https://github.com/oracle/graalpython) — GraalVM-based Python implementation (installed by mise)
+- [starship](https://starship.rs/) — cross-shell prompt (installed by mise)
 
 ## Disclaimer
 
@@ -26,7 +27,7 @@ This project includes content generated with the assistance of artificial intell
 └──────────────────────────────────────────────────────────────┘
                                    │
 ┌──────────────────────── VM (Debian 12 arm64) ────────────────┐
-│  users          devbox  (ssh key, NOPASSWD sudo, docker)       │
+│  users          devbox  (zsh, ssh key, NOPASSWD sudo, docker)  │
 │  apt            base CLI tools, Docker CE, mise binary         │
 │  mise (devbox)  ~/.config/mise/config.toml  ◄── tool_versions  │
 │                 ~/.local/share/mise/installs/<tool>/<version>  │
@@ -44,8 +45,9 @@ This project includes content generated with the assistance of artificial intell
 | `docker` | `docker` | Docker CE + Buildx + Compose plugin from the official Docker apt repo |
 | `mise` | `mise` | Installs mise from its apt repo, shell activation, generates the global mise config |
 | `runtimes` | `runtimes` | `mise install` of Java, Node.js, Gradle, Maven, Kotlin, Python, GraalPy |
-| `cli_tools` | `cli-tools` | `mise install` of gh, aws-cli, terraform, packer, uv, acli, copilot, codex, opencode |
-| `verify` | `verify` | Final gate: `mise doctor`, every `<tool> --version`, docker, sudo, group membership — **the build fails if any check fails** |
+| `cli_tools` | `cli-tools` | `mise install` of gh, aws-cli, terraform, packer, uv, ruff, acli, starship, copilot, codex, opencode |
+| `shell` | `shell` | zsh as login shell of `devbox`, `~/.zshenv`/`~/.zshrc`, starship prompt, bash + zsh completions for mise/gh/docker/uv/ruff/starship |
+| `verify` | `verify` | Final gate: `mise doctor`, every `<tool> --version`, zsh/starship wiring, docker, sudo, group membership — **the build fails if any check fails** |
 
 **Package sources**, in order of preference:
 
@@ -80,12 +82,13 @@ docker ps        # works without sudo
 |---|---|---|
 | Runtimes | Java (Temurin 25), Node.js (LTS, with npm/npx), Kotlin | mise |
 | Build tools | Gradle, Maven | mise |
-| Python | CPython 3.13 (`python`, `pip`), GraalPy (community), uv | mise |
+| Python | CPython 3.13 (`python`, `pip`), GraalPy (community), uv, ruff | mise |
 | Cloud / infra | aws-cli, terraform, packer | mise |
 | Dev CLIs | gh (GitHub CLI), acli (Atlassian CLI) | mise |
+| Shell | zsh (login shell), starship prompt | apt / mise |
 | AI assistants | GitHub Copilot CLI (`copilot`), Codex CLI (`codex`), OpenCode (`opencode`) | mise |
 | Containers | Docker CE, Buildx, Compose plugin | apt (docker.com repo) |
-| Base | git, curl, wget, jq, vim, htop, tree, unzip, zip, rsync, build-essential, python3-pip, postgresql-client | apt |
+| Base | git, curl, wget, jq, vim, htop, tree, unzip, zip, rsync, build-essential, postgresql-client | apt |
 
 All mise tools are installed **per user** under `/home/devbox/.local/share/mise/` and exposed through mise's PATH management (see [Login Shells](#login-shells--non-interactive-commands)).
 
@@ -115,7 +118,9 @@ mise_cli_tools:
   terraform: "latest"
   packer: "latest"
   uv: "latest"
+  ruff: "latest"
   acli: "latest"
+  starship: "latest"
   copilot: "latest"
   codex: "latest"
   opencode: "latest"
@@ -389,16 +394,29 @@ Add your own numbered scripts to extend provisioning. All `TCTL_*` variables fro
 
 Once the VM is running and provisioned (`tart-ctl.sh up && tart-ctl.sh provision`), connect with `tart-ctl.sh ssh`. A few things to be aware of on first use:
 
-### Login Shells & Non-Interactive Commands
+### Shell, Prompt & Non-Interactive Commands
 
-mise is activated from `/etc/profile.d/mise.sh` (login shells) and `~/.bashrc` (interactive shells). Interactive sessions get full activation (tools switch per directory, `JAVA_HOME` is exported); non-interactive login shells get the mise **shims** on `PATH`.
+`devbox` logs in to **zsh** with a [starship](https://starship.rs) prompt. The files are managed by `roles/shell`:
+
+| File | Purpose |
+|---|---|
+| `~/.zshenv` | Read by *every* zsh — puts the mise **shims** on `PATH`, so `ssh debian-ssh 'java --version'` just works |
+| `/etc/zsh/zprofile` | Login shells — sources `/etc/profile`, so `/etc/profile.d/*.sh` (incl. `tart-provision.sh` from `tart-ctl.sh provision`) applies to zsh as well |
+| `~/.zshrc` | Interactive shells — `compinit`, full `mise activate zsh` (per-directory tool switching, `JAVA_HOME`), `starship init zsh`, aliases; sources `~/.zshrc.local` if present |
+| `~/.config/starship.toml` | Prompt layout (OS · path · git · venv · java · node · docker │ memory · duration · time) — copied from `roles/shell/files/starship.toml` |
+| `/usr/local/share/zsh/site-functions/_*` | Generated zsh completions for mise, gh, docker, uv, ruff, starship |
+| `/etc/bash_completion.d/*` | The same completions for bash |
+
+The prompt uses [Nerd Font](https://www.nerdfonts.com) glyphs — install one in your **host** terminal (e.g. `brew install --cask font-jetbrains-mono-nerd-font`) or the icons render as boxes.
 
 ```bash
-ssh debian-ssh                              # interactive — everything works
-ssh debian-ssh 'bash -lc "java --version"'  # non-interactive — use a login shell
-ssh debian-ssh 'java --version'             # ✗ no profile loaded → command not found
+ssh debian-ssh                              # interactive zsh — full mise activation + starship
+ssh debian-ssh 'java --version'             # non-interactive — works via shims from ~/.zshenv
+ssh debian-ssh 'bash -lc "java --version"'  # bash login shell also works (/etc/profile.d/mise.sh)
 mise exec -- java --version                 # explicit alternative that always works
 ```
+
+bash remains fully configured (`/etc/profile.d/mise.sh`, `~/.bashrc` with mise + starship) — `chsh -s /bin/bash` if you prefer it. Put personal zsh tweaks in `~/.zshrc.local`; `~/.zshrc` is overwritten on reprovision.
 
 IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore see all tools. If an IDE needs a fixed path, use `mise where java` (e.g. `/home/devbox/.local/share/mise/installs/java/temurin-25.0.x`).
 
@@ -479,11 +497,11 @@ fswatch -o /local/project | xargs -n1 -I{} rsync -avz /local/project/ debian-ssh
 
 ### Tool Not Found (`java`, `node`, `gh`, …)
 
-All developer tools are managed by mise and only on `PATH` when mise is activated:
+All developer tools are managed by mise and only on `PATH` when mise is activated. For `devbox` (zsh) this happens in `~/.zshenv` / `~/.zshrc`; for bash in `/etc/profile.d/mise.sh` / `~/.bashrc`:
 
 ```bash
-ssh debian-ssh 'java --version'              # ✗ non-login shell
-ssh debian-ssh 'bash -lc "java --version"'   # ✓ login shell
+ssh debian-ssh 'java --version'              # ✓ zsh reads ~/.zshenv → shims
+ssh debian-ssh 'bash -c "java --version"'    # ✗ bash non-login shell — use bash -lc
 mise doctor                                  # shows activation state and problems
 mise ls --missing                            # tools in config that are not installed
 mise install                                 # install them
@@ -564,6 +582,7 @@ ls -la /mnt/shared/
 │           │   └── tasks/          #   main.yml, install.yml (reusable), verify.yml (reusable)
 │           ├── runtimes/           # mise install of runtimes + verify commands
 │           ├── cli_tools/          # mise install of CLI tools + verify commands
+│           ├── shell/              # zsh login shell, zshenv/zshrc templates, starship.toml, completions
 │           └── verify/             # final verification gate
 ├── bin_template/                   # VM instance control (copy to your project)
 │   ├── tart-ctl.sh                 # Control script — install to $PATH

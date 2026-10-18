@@ -37,7 +37,9 @@ mise_cli_tools:
   terraform: "latest"
   packer: "latest"
   uv: "latest"
+  ruff: "latest"
   acli: "latest"
+  starship: "latest"
   # AI coding assistants
   copilot: "latest"
   codex: "latest"

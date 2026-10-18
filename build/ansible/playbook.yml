@@ -39,8 +39,11 @@
     - role: runtimes      # Java, Node.js, Gradle, Maven, Kotlin, GraalPy (mise)
       tags: [runtimes]
 
-    - role: cli_tools     # gh, aws-cli, terraform, packer, uv, acli, AI CLIs (mise)
+    - role: cli_tools     # gh, aws-cli, terraform, packer, uv, ruff, acli, starship, AI CLIs (mise)
       tags: [cli-tools]
+
+    - role: shell         # zsh login shell, starship prompt, bash/zsh completions
+      tags: [shell]
 
     - role: verify        # final gate — build fails if any check fails
       tags: [verify]

@@ -30,29 +30,6 @@
   ansible.builtin.debug:
     msg: "{{ verify_mise_ls.stdout_lines }}"
 
-- name: Install bash completion for mise-managed CLIs
-  become: true
-  become_user: "{{ devbox_user }}"
-  ansible.builtin.shell: bash -lc '{{ item.cmd }}' > /tmp/{{ item.name }}.bash
-  loop:
-    - { name: gh, cmd: gh completion -s bash }
-    - { name: docker, cmd: docker completion bash }
-  changed_when: true
-
-- name: Move completions into place
-  ansible.builtin.copy:
-    src: /tmp/{{ item }}.bash
-    dest: /etc/bash_completion.d/{{ item }}
-    remote_src: true
-    mode: '0644'
-  loop: [gh, docker]
-
-- name: Clean up completion temp files
-  ansible.builtin.file:
-    path: /tmp/{{ item }}.bash
-    state: absent
-  loop: [gh, docker]
-
 - name: Write message of the day
   ansible.builtin.template:
     src: motd.j2

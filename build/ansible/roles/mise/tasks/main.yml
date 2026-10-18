@@ -61,11 +61,6 @@
     group: "{{ devbox_user }}"
     mode: '0644'
 
-- name: Install bash completion for mise
-  ansible.builtin.shell: mise completion bash > /etc/bash_completion.d/mise
-  args:
-    creates: /etc/bash_completion.d/mise
-
 - name: Create mise config directory
   ansible.builtin.file:
     path: "{{ mise_config_dir }}"

@@ -22,7 +22,6 @@
       - lsb-release
       - apt-transport-https
       - build-essential
-      - python3-pip
       - postgresql-client
     state: present
 

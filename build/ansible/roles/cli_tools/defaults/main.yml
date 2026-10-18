@@ -6,6 +6,7 @@ cli_tools_verify_commands:
   - terraform --version
   - packer --version
   - uv --version
+  - ruff --version
   - acli --version
   - copilot --version
   - codex --version

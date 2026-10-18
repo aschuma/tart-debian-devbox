@@ -40,7 +40,7 @@ ansible-playbook playbook.yml \
   --extra-vars "ansible_user=devbox ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
 ```
 
-Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `verify`
+Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools`, `shell`, `verify`
 
 ## Architecture
 
@@ -57,13 +57,14 @@ build/
       tool_versions.yml      # mise_runtimes + mise_cli_tools — THE place for tool versions
     roles/
       user/                  # devbox account, NOPASSWD sudo, authorized_keys, sshd_config
-      common_tools/          # base apt packages (incl. acl for become_user), git defaults
+      common_tools/          # base apt packages (incl. acl, build-essential; no pip — use uv), git defaults
       docker/                # Docker CE apt repo, packages, devbox in docker group
       mise/                  # mise apt repo, /etc/profile.d/mise.sh, ~/.bashrc, config.toml.j2
         tasks/install.yml    #   reusable: mise install of a dict of tools (var mise_install_tools)
         tasks/verify.yml     #   reusable: run a list of commands as devbox (var mise_verify_commands)
       runtimes/              # include mise/install + verify for mise_runtimes
       cli_tools/             # include mise/install + verify for mise_cli_tools
+      shell/                 # zsh login shell, /etc/zsh/zprofile, ~/.zshenv + ~/.zshrc templates, starship.toml, completions
       verify/                # final gate: groups, mise doctor, all *_verify_commands, docker, sudo
 
 bin_template/
@@ -75,7 +76,7 @@ bin_template/
     20_init-env.sh           # Pushes .env → /etc/profile.d/tart-provision.sh on VM
 ```
 
-Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → verify`.
+Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → shell → verify`.
 
 ## Key Conventions
 
@@ -88,7 +89,7 @@ Role execution order: `user → common_tools → docker → mise → runtimes �
 ### Adding or Changing Tools
 
 - **mise-managed tool**: edit `build/ansible/group_vars/all/tool_versions.yml`. Tool names are mise registry short names (`mise registry`) or explicit backends (`github:owner/repo`, `npm:pkg`, `aqua:owner/repo`). Values are version specs (`"latest"`, `"lts"`, `"temurin-25"`, `"3.9.9"`) or a mapping with `version` + backend options.
-- Add a `<tool> --version` entry to `runtimes_verify_commands` or `cli_tools_verify_commands` (`roles/<role>/defaults/main.yml`) so `verify` covers it.
+- Add a `<tool> --version` entry to `runtimes_verify_commands`, `cli_tools_verify_commands` or `shell_verify_commands` (`roles/<role>/defaults/main.yml`) so `verify` covers it.
 - **Never** write new download/unarchive/`/etc/profile.d` PATH logic for a tool that mise can install.
 - **apt-only tools** go into `roles/common_tools`; tools needing their own apt repo get a role following the `roles/docker` pattern (keyring stat → download → dearmor → sources list → apt).
 
@@ -102,13 +103,15 @@ Role execution order: `user → common_tools → docker → mise → runtimes �
 ### mise on the VM
 
 - Binary from the mise apt repo (`/usr/bin/mise`); data in `/home/devbox/.local/share/mise/`; global config generated from `roles/mise/templates/config.toml.j2` at `/home/devbox/.config/mise/config.toml`.
-- `/etc/profile.d/mise.sh`: interactive login shells → `mise activate bash`; non-interactive login shells → `mise activate bash --shims`. `~/.bashrc` → `mise activate bash`.
+- `/etc/profile.d/mise.sh`: zsh → `mise activate zsh --shims`; interactive bash → `mise activate bash`; non-interactive bash → `--shims`. `~/.bashrc` → `mise activate bash`.
+- zsh (devbox's login shell, `roles/shell`): `~/.zshenv` → shims (every zsh, so `ssh host 'cmd'` works); `~/.zshrc` → `mise activate zsh` + `starship init zsh` + `compinit`; `/etc/zsh/zprofile` sources `/etc/profile` so `/etc/profile.d/*.sh` applies to zsh login shells.
 - `trusted_config_paths` includes `/mnt/shared` and `/home/devbox` so project `mise.toml` files work without `mise trust`.
-- Tools are therefore only available in **login shells**:
+- Tool availability:
 
 ```bash
-ssh debian-ssh 'java --version'               # Wrong — no profile loaded
-ssh debian-ssh 'bash -lc "java --version"'    # Correct
+ssh debian-ssh 'java --version'               # OK — zsh reads ~/.zshenv (shims)
+ssh debian-ssh 'bash -lc "java --version"'    # OK — bash login shell (Ansible tasks use this form)
+ssh debian-ssh 'bash -c "java --version"'     # Wrong — bash without profile
 ```
 
 - `MISE_GITHUB_TOKEN` set on the host is forwarded to `mise install` to avoid GitHub API rate limits.
