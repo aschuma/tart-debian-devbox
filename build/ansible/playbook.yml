@@ -1,8 +1,9 @@
 ---
 # =============================================================================
-# playbook.yml — Ansible Playbook for Tart Debian 12 (Bookworm) VM
+# playbook.yml — Ansible Playbook for Tart Debian 12 (Bookworm) Dev VM
 #
-# Installs: CLI tools, Docker, mise-managed runtimes (Java, Node.js, Gradle, Maven, Kotlin, GraalPy)
+# Pure orchestration: roles run in order, no inline tasks.
+# Tool versions: group_vars/all/tool_versions.yml
 # =============================================================================
 
 - name: Provision Debian 12 (Bookworm) Dev VM
@@ -23,23 +24,26 @@
   # ---------------------------------------------------------------------------
   roles:
 
-    - role: user
+    - role: user          # devbox account, SSH keys, sshd hardening
       tags: [user]
 
-    - role: common_tools
+    - role: common_tools  # base apt packages, git defaults
       tags: [tools]
 
-    - role: mise
+    - role: docker        # Docker CE + Compose plugin (apt)
+      tags: [docker]
+
+    - role: mise          # mise binary, shell activation, global config
       tags: [mise]
 
-    - role: runtimes
+    - role: runtimes      # Java, Node.js, Gradle, Maven, Kotlin, GraalPy (mise)
       tags: [runtimes]
 
-    - role: cli_tools
+    - role: cli_tools     # gh, aws-cli, terraform, packer, uv, acli, AI CLIs (mise)
       tags: [cli-tools]
 
-    - role: docker
-      tags: [docker]
+    - role: verify        # final gate — build fails if any check fails
+      tags: [verify]
 
   # ---------------------------------------------------------------------------
   post_tasks:
@@ -53,7 +57,8 @@
     - name: Provisioning complete
       ansible.builtin.debug:
         msg: >-
-          Done — mise runtimes: {{ mise_runtimes.keys() | join(', ') }};
+          Done — user={{ devbox_user }};
+          mise runtimes: {{ mise_runtimes.keys() | join(', ') }};
           mise CLI tools: {{ mise_cli_tools.keys() | join(', ') }};
-          Docker installed. Reboot recommended for docker group changes.
+          Docker installed.
       tags: [always]
