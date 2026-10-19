@@ -7,7 +7,19 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-vm_name      := env_var_or_default("TCTL_VM_NAME", "debian-ssh")
+vm_name      := `bash -c '
+dir="$PWD"
+while true; do
+  if [[ -f "$dir/.tart-ctl-env" ]]; then
+    source "$dir/.tart-ctl-env"
+    printf "%s" "${TCTL_VM_NAME:-debian-ssh}"
+    exit
+  fi
+  [[ -d "$dir/.git" || "$dir" == "/" ]] && break
+  dir="$(dirname "$dir")"
+done
+printf "%s" "${TCTL_VM_NAME:-debian-ssh}"
+'`
 ssh_user     := env_var_or_default("TCTL_SSH_USER", "devbox")
 identity     := env_var_or_default("TCTL_IDENTITY_FILE", env_var("HOME") + "/.ssh/id_ed25519_tart")
 tart_ctl     := env_var_or_default("TART_CTL", "tart-ctl.sh")

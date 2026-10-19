@@ -224,14 +224,30 @@ cmd_update_ssh_config() {
   chmod 600 "${TCTL_SSH_CONFIG}"
 
   if grep -q "^Host ${TCTL_VM_NAME}$" "${TCTL_SSH_CONFIG}"; then
-    # Update HostName and User in existing block (BSD & GNU awk compatible via temp file)
+    # Update the managed settings in an existing block (BSD & GNU awk compatible via temp file)
     local tmpfile
     tmpfile="$(mktemp)"
-    awk -v host="${TCTL_VM_NAME}" -v ip="${ip}" -v user="${TCTL_SSH_USER}" '
-      /^Host / { in_block = ($2 == host) }
+    awk -v host="${TCTL_VM_NAME}" -v ip="${ip}" -v user="${TCTL_SSH_USER}" \
+      -v remote="${TCTL_REMOTE_FORWARD:-}" '
+      function finish_block() {
+        if (in_block && !forward_done && remote != "")
+          print "    RemoteForward " remote
+      }
+      /^Host / {
+        finish_block()
+        in_block = ($2 == host)
+        forward_done = 0
+      }
+      in_block && /^[[:space:]]+RemoteForward[[:space:]]/ {
+        if (remote != "" && !forward_done)
+          print "    RemoteForward " remote
+        forward_done = 1
+        next
+      }
       in_block && /^[[:space:]]+HostName / { sub(/HostName .*/, "HostName " ip) }
       in_block && /^[[:space:]]+User / { sub(/User .*/, "User " user) }
       { print }
+      END { finish_block() }
     ' "${TCTL_SSH_CONFIG}" > "${tmpfile}"
     mv "${tmpfile}" "${TCTL_SSH_CONFIG}"
     chmod 600 "${TCTL_SSH_CONFIG}"
@@ -345,11 +361,18 @@ load_env_layers() {
 
 # Replaces values of secret-looking keys with ******** (stdin → stdout).
 mask_secrets() {
-  awk '/^export [A-Za-z_][A-Za-z0-9_]*=/ {
-         key = toupper(substr($0, 8, index($0, "=") - 8))
-         if (key ~ /(TOKEN|SECRET|PASS|KEY|CREDENTIAL|AUTH)/) sub(/=.*/, "=********")
-       }
-       { print }'
+  awk '
+    /^[-+ ]?export [A-Za-z_][A-Za-z0-9_]*=/ {
+      prefix = ""
+      if (substr($0, 1, 1) == "+" || substr($0, 1, 1) == "-" || substr($0, 1, 1) == " ")
+        prefix = substr($0, 1, 1)
+      line = substr($0, length(prefix) + 1)
+      key = toupper(substr(line, 8, index(line, "=") - 8))
+      if (key ~ /(TOKEN|SECRET|PASS|KEY|CREDENTIAL|AUTH)/) sub(/=.*/, "=********", line)
+      print prefix line
+      next
+    }
+    { print }'
 }
 
 # Pushes the layered env into the VM as /etc/profile.d/tart-provision.sh,
@@ -418,11 +441,13 @@ cmd_env() {
     local remote
     remote="$(ssh -T -F "${TCTL_SSH_CONFIG}" -i "${TCTL_IDENTITY_FILE}" \
       "${TCTL_SSH_USER}@${TCTL_VM_NAME}" "cat '${ENV_DEST}' 2>/dev/null || true")"
-    if diff -u --label "vm:${ENV_DEST}" --label "local (rendered)" \
-         <(printf '%s\n' "${remote}" | ${filter}) \
-         <(printf '%s\n' "${ENV_RENDERED}" | ${filter}); then
+    local diff_output
+    if diff_output="$(diff -u --label "vm:${ENV_DEST}" --label "local (rendered)" \
+         <(printf '%s\n' "${remote}") \
+         <(printf '%s\n' "${ENV_RENDERED}") 2>&1)"; then
       info "VM is up to date."
     else
+      printf '%s\n' "${diff_output}" | ${filter}
       warn "VM differs — run '${SCRIPT_NAME} provision' to update."
       return 1
     fi
