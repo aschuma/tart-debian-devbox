@@ -301,7 +301,8 @@ render_env_exports() {
     key="${line%%=*}"; key="${key//[[:space:]]/}"
     val="${line#*=}"
     if [[ "${val}" =~ ^\".*\"$ || "${val}" =~ ^\'.*\'$ ]]; then
-      val="${val:1:-1}"
+      val="${val#?}"
+      val="${val%?}"
     fi
     if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       warn "Skipping invalid key: ${key}"
