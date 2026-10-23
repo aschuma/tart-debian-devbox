@@ -29,6 +29,7 @@ build:
 
 # Validate the Packer template and Ansible playbook syntax
 validate:
+    cd build && packer init debian-ssh.pkr.hcl
     cd build && packer validate -var-file=vars.pkrvars.hcl -var vm_name={{vm_name}} debian-ssh.pkr.hcl
     cd build/ansible && ansible-playbook --syntax-check -i localhost, playbook.yml
 
