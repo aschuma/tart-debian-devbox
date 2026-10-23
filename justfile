@@ -63,14 +63,14 @@ clone name:
 reprovision tags="all":
     ./build/with-vm.sh -C build/ansible ansible-playbook playbook.yml \
       -i "__VM_IP__," \
-      --private-key {{identity}} \
+      --private-key "{{identity}}" \
       -u {{ssh_user}} --become \
       --tags {{tags}} \
       --extra-vars "ansible_user={{ssh_user}} ansible_ssh_common_args='{{ssh_opts}}'"
 
 # Show mise-managed tools inside the template VM (auto-starts/stops it)
 tools:
-    ./build/with-vm.sh ssh -i {{identity}} {{ssh_opts}} {{ssh_user}}@__VM_IP__ 'bash -lc "mise ls"'
+    ./build/with-vm.sh ssh -i "{{identity}}" {{ssh_opts}} {{ssh_user}}@__VM_IP__ 'bash -lc "mise ls"'
 
 # Delete the template image (clones are not affected)
 clean:
