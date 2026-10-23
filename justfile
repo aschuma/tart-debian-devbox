@@ -40,10 +40,10 @@ lint:
 
 # Install tart-ctl.sh to your PATH (default: ~/.local/bin; override with TART_CTL_INSTALL_DIR) and copy config_template/ → ~/.config/tctl/
 install:
-    mkdir -p {{install_dir}} {{config_dir}}
-    install -m 0755 {{justfile_directory()}}/bin_template/tart-ctl.sh {{install_dir}}/tart-ctl.sh
+    mkdir -p "{{install_dir}}" "{{config_dir}}"
+    install -m 0755 "{{justfile_directory()}}/bin_template/tart-ctl.sh" "{{install_dir}}/tart-ctl.sh"
     @echo "Installed tart-ctl.sh → {{install_dir}}/tart-ctl.sh"
-    @for src in {{justfile_directory()}}/config_template/*; do \
+    @for src in "{{justfile_directory()}}"/config_template/*; do \
       dest="{{config_dir}}/$(basename "$src")"; \
       if [[ -e "$dest" ]]; then \
         echo "Kept existing $dest (template: config_template/$(basename "$src"))"; \
