@@ -1,3 +1,5 @@
+> **New here?** Follow [QUICKSTART.md](QUICKSTART.md) — prerequisites, SSH key, building the template image, cloning it, `tart-ctl.sh init`, provisioning, SSH, start/stop. This README is the reference.
+
 # Packer + Tart + Ansible: Debian 12 Dev VM
 
 Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A single `devbox` user, Docker, and a [mise](https://mise.jdx.dev)-managed toolchain (Java 25, Node.js LTS, Gradle, Maven, Kotlin, Python 3.13, GraalPy, gh, aws-cli, terraform, packer, uv, ruff, acli, GitHub Copilot CLI, Codex CLI, OpenCode) in a zsh shell with a [starship](https://starship.rs) prompt.
@@ -15,8 +17,6 @@ Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A s
 ## Disclaimer
 
 This project includes content generated with the assistance of artificial intelligence tools. Significant portions of the code, documentation, or other materials may have been created or refined using AI. While efforts have been made to review and validate all outputs, the accuracy and correctness of AI-generated content cannot be guaranteed. Users are encouraged to review and verify the code before use.
-
-> **New here?** Follow [QUICKSTART.md](QUICKSTART.md) — prerequisites, SSH key, building the template image, cloning it, `tart-ctl.sh init`, provisioning, SSH, start/stop. This README is the reference.
 
 ---
 
