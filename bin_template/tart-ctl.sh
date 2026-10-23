@@ -2,8 +2,9 @@
 # tart-ctl.sh — Global Tart VM management script
 # Usage: tart-ctl.sh [command]
 #
-# Recursively searches upward from PWD for a .tart-ctl-env file,
-# sources it to load VM configuration, then dispatches the given command.
+# Loads the global config (~/.config/tctl/config), then recursively searches
+# upward from PWD for a .tart-ctl-env project marker, sources it on top, and
+# dispatches the given command.
 
 set -euo pipefail
 
@@ -11,6 +12,7 @@ set -euo pipefail
 
 readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
 readonly ENV_FILE_NAME=".tart-ctl-env"
+readonly GLOBAL_CONFIG_FILE="${XDG_CONFIG_HOME:-${HOME}/.config}/tctl/config"
 
 # ─── Colours (only when stdout is a terminal) ─────────────────────────────────
 
@@ -30,7 +32,7 @@ fi
 
 info()    { printf '%s\n' "${GREEN}==>${RESET} $*"; }
 warn()    { printf '%s\n' "${YELLOW}[warn]${RESET} $*" >&2; }
-error()   { printf '%s\n' "${RED}[error]${RESET} $*" >&2; }
+error()   { printf '%b\n' "${RED}[error]${RESET} $*" >&2; }
 header()  { printf '%s\n' "${BOLD}${CYAN}$*${RESET}"; }
 dim()     { printf '%s\n' "${DIM}$*${RESET}"; }
 
@@ -69,6 +71,17 @@ require_running() {
   fi
 }
 
+# Ensures the SSH-related settings are present (needed by ssh / provision / env --diff / update-ssh-config).
+require_ssh_settings() {
+  local var missing=()
+  for var in TCTL_SSH_USER TCTL_SSH_CONFIG TCTL_IDENTITY_FILE; do
+    [[ -n "${!var:-}" ]] || missing+=("${var}")
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    die "Missing settings: ${missing[*]}.\n       Set them in '${GLOBAL_CONFIG_FILE}' (or override in '${CONFIG_FILE}')."
+  fi
+}
+
 # ─── Help ─────────────────────────────────────────────────────────────────────
 
 usage() {
@@ -76,18 +89,19 @@ usage() {
 
 $(header "tart-ctl.sh — Tart VM Controller")
 
-$(dim "Searches upward from PWD for ${ENV_FILE_NAME}, sources it, then")
-$(dim "dispatches the given command against the configured VM.")
+$(dim "Loads ${GLOBAL_CONFIG_FILE}, then searches upward from PWD")
+$(dim "for ${ENV_FILE_NAME}, sources it on top, and dispatches the given command.")
 
 ${BOLD}USAGE${RESET}
     ${SCRIPT_NAME} <command>
     ${SCRIPT_NAME} -h | --help
 
 ${BOLD}COMMANDS${RESET}
+    $(printf '%-28s' 'init')Create ${ENV_FILE_NAME} in the current directory (interactive)
     $(printf '%-28s' 'up,  start')Start the VM
     $(printf '%-28s' 'down, stop')Stop the VM
     $(printf '%-28s' 'st,  status')Show VM status (running / stopped)
-    $(printf '%-28s' 'pr,  provision')Push .env into the VM's /etc/profile.d/
+    $(printf '%-28s' 'pr,  provision')Push the project env files into the VM's /etc/profile.d/
     $(printf '%-28s' 'env [--diff]')Show the effective env; --diff compares with the VM
     $(printf '%-28s' 'sh,  ssh')Open an interactive SSH shell in the VM
     $(printf '%-28s' 'ip')Print the VM's current IP address
@@ -95,27 +109,36 @@ ${BOLD}COMMANDS${RESET}
     $(printf '%-28s' 'help, -h, --help')Show this help message
 
 ${BOLD}DISCOVERY${RESET}
-    The script walks upward from the current directory looking for
-    ${ENV_FILE_NAME}.  The search stops at a .git directory or the
-    filesystem root.  The found file is sourced to populate variables
-    such as TCTL_VM_NAME that are used by the commands above.
+    Configuration is layered (later overrides earlier):
+      1. ${GLOBAL_CONFIG_FILE}
+         Global defaults shared by all projects (SSH user/key, share mode, …).
+      2. ${ENV_FILE_NAME}
+         Project marker — create it with '${SCRIPT_NAME} init'. The script walks
+         upward from the current directory to the filesystem root until it finds
+         this file; the directory that contains it becomes the project root
+         (relative env files resolve here). It must set TCTL_VM_NAME.
 
-${BOLD}ENVIRONMENT FILE${RESET}
-    Expected variables in ${ENV_FILE_NAME} (all prefixed TCTL_):
-        TCTL_VM_NAME        Name of the Tart VM to manage         (required)
-        TCTL_SSH_USER       SSH user inside the VM                (required for provision)
+${BOLD}VARIABLES${RESET}
+    All variables are prefixed TCTL_:
+        TCTL_VM_NAME        Name of the Tart VM to manage         (required, ${ENV_FILE_NAME})
+        TCTL_SSH_USER       SSH user inside the VM                (required for ssh/provision)
+        TCTL_SSH_CONFIG     Path to SSH client config file        (required for ssh/provision)
+        TCTL_IDENTITY_FILE  Path to SSH private key               (required for ssh/provision)
         TCTL_REMOTE_FORWARD Optional "PORT HOST:PORT" written as RemoteForward to ~/.ssh/config
-        TCTL_SSH_CONFIG     Path to SSH client config file        (required for provision)
-        TCTL_IDENTITY_FILE  Path to SSH private key               (required for provision)
         TCTL_HOST_SHARE_DIR Host directory to mount into the VM   (optional)
+                            "auto" = the directory containing ${ENV_FILE_NAME}
+        TCTL_ENV_PROVISION_FILES
+                            Comma-separated env files pushed by 'provision'
+                            (default "${ENV_PROVISION_FILES_DEFAULT}"). Relative entries resolve
+                            against the project root; absolute and ~/ paths as-is.
 
-    Sibling ${BOLD}.env${RESET} and ${BOLD}.env.local${RESET} files (plain KEY=VALUE) are layered —
-    .env.local overrides individual keys of .env — and pushed by the
-    'provision' command into the VM's /etc/profile.d/. Set ${BOLD}TCTL_ENV_FILE${RESET}
-    to add a third layer on top: a path, a FIFO, or a process substitution
-    such as <(op inject -i .env.tpl).
+    Env files are plain KEY=VALUE and are ${BOLD}layered${RESET} in list order — later files
+    override individual keys of earlier ones — then pushed by 'provision' into
+    the VM's /etc/profile.d/. Set ${BOLD}TCTL_ENV_FILE${RESET} to add one more layer on top:
+    a path, a FIFO, or a process substitution such as <(op inject -i .env.tpl).
 
 ${BOLD}EXAMPLES${RESET}
+    ${SCRIPT_NAME} init
     ${SCRIPT_NAME} up
     ${SCRIPT_NAME} provision
     ${SCRIPT_NAME} env --diff
@@ -129,7 +152,7 @@ EOF
 
 # ─── Config Discovery ─────────────────────────────────────────────────────────
 
-# Walks upward from PWD looking for .tart-ctl-env.
+# Walks upward from PWD to the filesystem root looking for .tart-ctl-env.
 # Sets CONFIG_DIR and CONFIG_FILE on success; calls die() on failure.
 find_config() {
   local dir
@@ -142,11 +165,6 @@ find_config() {
       return 0
     fi
 
-    # Stop at a git root
-    if [[ -d "${dir}/.git" ]]; then
-      break
-    fi
-
     # Stop at filesystem root
     if [[ "${dir}" == "/" ]]; then
       break
@@ -155,10 +173,148 @@ find_config() {
     dir="$(dirname "${dir}")"
   done
 
-  die "No '${ENV_FILE_NAME}' found (searched from '$(pwd)' upward to '${dir}').\n       Create one alongside your VM project or place it at a git root."
+  die "No '${ENV_FILE_NAME}' found (searched from '$(pwd)' upward to '/').\n       Create one in the root of the project you want to manage:\n         cd <project-root> && ${SCRIPT_NAME} init"
+}
+
+# Loads the configuration layers: global config (optional) → project marker (required).
+load_config() {
+  load_global_config
+
+  find_config
+
+  # shellcheck source=/dev/null
+  source "${CONFIG_FILE}"
+
+  if [[ -z "${TCTL_VM_NAME:-}" ]]; then
+    die "'TCTL_VM_NAME' is not set in '${CONFIG_FILE}'.\n       Each project names its own VM there, e.g.  TCTL_VM_NAME=\"my-project\"\n       Or regenerate the file interactively:   cd '${CONFIG_DIR}' && ${SCRIPT_NAME} init"
+  fi
+
+  resolve_share_dir
+}
+
+# Sources the global config if present (warns otherwise).
+load_global_config() {
+  if [[ -r "${GLOBAL_CONFIG_FILE}" ]]; then
+    # shellcheck source=/dev/null
+    source "${GLOBAL_CONFIG_FILE}"
+  else
+    warn "No global config at '${GLOBAL_CONFIG_FILE}' — run 'just install' or copy config_template/config there."
+  fi
+}
+
+# Resolves the effective host share directory into SHARE_DIR (empty = no share).
+# The project .tart-ctl-env overrides the global config because it is sourced
+# last; the special value "auto" means "the directory containing .tart-ctl-env".
+resolve_share_dir() {
+  case "${TCTL_HOST_SHARE_DIR:-}" in
+    "")   SHARE_DIR="" ;;
+    auto) SHARE_DIR="${CONFIG_DIR}" ;;
+    *)    SHARE_DIR="${TCTL_HOST_SHARE_DIR}" ;;
+  esac
+  if [[ -n "${SHARE_DIR}" && ! -d "${SHARE_DIR}" ]]; then
+    die "TCTL_HOST_SHARE_DIR '${SHARE_DIR}' is not a directory."
+  fi
 }
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
+
+# Interactively creates .tart-ctl-env in the current directory.
+cmd_init() {
+  local target="${PWD}/${ENV_FILE_NAME}"
+  local vm_name="" share_mode="" share_dir="" answer=""
+
+  header "Initialise ${ENV_FILE_NAME} in ${PWD}"
+  echo
+
+  if [[ -e "${target}" ]]; then
+    read -r -p "$(printf '%s' "${YELLOW}[warn]${RESET} '${target}' already exists. Overwrite? [y/N] ")" answer
+    [[ "${answer}" =~ ^[Yy]$ ]] || die "Aborted — existing file left untouched."
+  fi
+
+  load_global_config
+
+  # ── VM name ──────────────────────────────────────────────────────────────
+  local -a vms=()
+  if command -v tart >/dev/null 2>&1; then
+    local line
+    while IFS= read -r line; do vms+=("${line}"); done \
+      < <(tart list 2>/dev/null | awk 'NR>1 && $1=="local" {print $2}')
+    if (( ${#vms[@]} > 0 )); then
+      dim "Local Tart VMs: ${vms[*]}"
+    fi
+  else
+    warn "'tart' not found on PATH — cannot check whether the VM exists."
+  fi
+
+  while [[ -z "${vm_name}" ]]; do
+    read -r -p "VM name to manage from this project: " vm_name
+    vm_name="${vm_name//[[:space:]]/}"
+    if [[ -n "${vm_name}" && ! "${vm_name}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+      error "Use only letters, digits, '.', '_' and '-'."
+      vm_name=""
+    fi
+  done
+
+  if (( ${#vms[@]} > 0 )) && ! printf '%s\n' "${vms[@]}" | grep -qx -- "${vm_name}"; then
+    warn "No local Tart VM named '${vm_name}' exists yet."
+    dim "  Create it by cloning the template:  just clone ${vm_name}   (= tart clone debian-ssh ${vm_name})"
+  fi
+
+  # ── Share directory ──────────────────────────────────────────────────────
+  echo
+  echo "Host directory to mount in the VM at /mnt/shared/workspace:"
+  echo "  1) auto  — this directory (${PWD})"
+  echo "  2) path  — a specific directory"
+  echo "  3) none  — start the VM without a share"
+  local global_share="${TCTL_HOST_SHARE_DIR-}"
+  local default_choice="1"
+  case "${global_share}" in
+    auto) default_choice="1" ;;
+    "")   default_choice="3" ;;
+    *)    default_choice="2" ;;
+  esac
+  dim "  (global config currently: ${global_share:-none}; Enter keeps that → ${default_choice})"
+
+  while [[ -z "${share_mode}" ]]; do
+    read -r -p "Choice [${default_choice}]: " answer
+    answer="${answer:-${default_choice}}"
+    case "${answer}" in
+      1|auto) share_mode="auto" ;;
+      2|path)
+        read -r -e -p "Directory to share: " share_dir
+        share_dir="${share_dir/#\~/${HOME}}"
+        if [[ -z "${share_dir}" || ! -d "${share_dir}" ]]; then
+          error "'${share_dir}' is not a directory."
+          continue
+        fi
+        share_dir="$(cd "${share_dir}" && pwd)"
+        share_mode="path"
+        ;;
+      3|none) share_mode="none" ;;
+      *) error "Please answer 1, 2 or 3." ;;
+    esac
+  done
+
+  # ── Write file ───────────────────────────────────────────────────────────
+  {
+    printf '# tart-ctl project marker — generated by %s init on %s\n' "${SCRIPT_NAME}" "$(date +%Y-%m-%d)"
+    printf '# Global defaults: %s (this file overrides them for this project).\n\n' "${GLOBAL_CONFIG_FILE}"
+    printf '# Tart VM managed from this project (clone of the template: just clone %s)\n' "${vm_name}"
+    printf 'TCTL_VM_NAME="%s"\n\n' "${vm_name}"
+    printf '# Host directory mounted in the VM at /mnt/shared/workspace\n'
+    case "${share_mode}" in
+      auto) printf '#   "auto" = the directory containing this file\nTCTL_HOST_SHARE_DIR="auto"\n' ;;
+      path) printf 'TCTL_HOST_SHARE_DIR=%q\n' "${share_dir}" ;;
+      none) printf '#   "" = start the VM without a share\nTCTL_HOST_SHARE_DIR=""\n' ;;
+    esac
+    printf '\n# Env files pushed by `%s provision` (comma-separated, relative to this directory)\n' "${SCRIPT_NAME}"
+    printf '# TCTL_ENV_PROVISION_FILES=".env,.env.local"\n'
+  } > "${target}"
+
+  echo
+  info "Wrote ${target}"
+  dim "Next: ${SCRIPT_NAME} up  →  ${SCRIPT_NAME} update-ssh-config  →  ${SCRIPT_NAME} ssh"
+}
 
 cmd_start() {
   if vm_ip_or_false; then
@@ -167,8 +323,9 @@ cmd_start() {
   fi
 
   info "Starting VM '${TCTL_VM_NAME}' …"
-  if [[ -n "${TCTL_HOST_SHARE_DIR:-}" ]]; then
-    tart run --no-graphics --dir=workspace:"${TCTL_HOST_SHARE_DIR}" "${TCTL_VM_NAME}" &
+  if [[ -n "${SHARE_DIR}" ]]; then
+    dim "  share: ${SHARE_DIR} → /mnt/shared/workspace"
+    tart run --no-graphics --dir=workspace:"${SHARE_DIR}" "${TCTL_VM_NAME}" &
   else
     tart run --no-graphics "${TCTL_VM_NAME}" &
   fi
@@ -205,7 +362,9 @@ cmd_status() {
       printf '%s\n' "  State : ${DIM}${state}${RESET}"
       ;;
   esac
-  echo    "  Config: ${CONFIG_FILE}"
+  echo    "  Global : ${GLOBAL_CONFIG_FILE}"
+  echo    "  Project: ${CONFIG_FILE}"
+  echo    "  Share  : ${SHARE_DIR:-(none)}"
 }
 
 cmd_ip() {
@@ -214,6 +373,7 @@ cmd_ip() {
 }
 
 cmd_update_ssh_config() {
+  require_ssh_settings
   require_running
   local ip="${VM_IP}"
   info "Resolved '${TCTL_VM_NAME}' → ${ip}"
@@ -277,7 +437,9 @@ cmd_ssh() {
   # Any arguments after the command are passed through to ssh (e.g. a remote command).
   # Usage: tart-ctl.sh ssh [-- remote_cmd [args…]]
   local -a extra_args=("$@")
+  [[ ${#extra_args[@]} -gt 0 && "${extra_args[0]}" == "--" ]] && extra_args=("${extra_args[@]:1}")
 
+  require_ssh_settings
   require_running
   info "Connecting to '${TCTL_VM_NAME}' (${VM_IP}) …"
 
@@ -337,19 +499,43 @@ env_readable() { [[ -n "$1" && -r "$1" && ! -d "$1" ]]; }
 # exactly once so one-shot sources (pipes) are fully consumed here.
 #
 # Layers (later ones override earlier keys, like dotenv-flow / Symfony / Vite):
-#   1. .env           shared defaults (committed)
-#   2. .env.local     personal overrides (gitignored)
-#   3. TCTL_ENV_FILE  optional extra source, e.g. <(op inject -i .env.tpl)
+#   1..n  TCTL_ENV_PROVISION_FILES  comma-separated list (default ".env"); relative
+#         entries resolve against the directory holding .tart-ctl-env, absolute
+#         and ~/ entries are used as-is. Unreadable entries are skipped.
+#   n+1   TCTL_ENV_FILE             optional ad-hoc source, e.g. <(op inject -i .env.tpl)
 readonly ENV_DEST="/etc/profile.d/tart-provision.sh"
+readonly ENV_PROVISION_FILES_DEFAULT=".env"
 ENV_LAYERS=()
 ENV_RENDERED=""
 
+# Expands one TCTL_ENV_PROVISION_FILES entry to an absolute path (stdout).
+resolve_env_path() {
+  local entry="$1"
+  entry="${entry#"${entry%%[![:space:]]*}"}"   # trim leading whitespace
+  entry="${entry%"${entry##*[![:space:]]}"}"   # trim trailing whitespace
+  # shellcheck disable=SC2088  # literal "~" case pattern is intended
+  case "${entry}" in
+    "")   return 1 ;;
+    /*)   printf '%s' "${entry}" ;;
+    "~"|"~/"*) printf '%s%s' "${HOME}" "${entry#\~}" ;;
+    *)    printf '%s/%s' "${CONFIG_DIR}" "${entry}" ;;
+  esac
+}
+
 load_env_layers() {
-  local f
-  for f in "${CONFIG_DIR}/.env" "${CONFIG_DIR}/.env.local" "${TCTL_ENV_FILE:-}"; do
-    env_readable "${f}" && ENV_LAYERS+=("${f}")
+  local entry f
+  local list="${TCTL_ENV_PROVISION_FILES-${ENV_PROVISION_FILES_DEFAULT}}"
+  local -a skipped=()
+
+  IFS=',' read -r -a entries <<< "${list}"
+  for entry in "${entries[@]}"; do
+    f="$(resolve_env_path "${entry}")" || continue
+    if env_readable "${f}"; then ENV_LAYERS+=("${f}"); else skipped+=("${f}"); fi
   done
-  [[ ${#ENV_LAYERS[@]} -eq 0 ]] && warn "No readable .env / .env.local in ${CONFIG_DIR}."
+  if env_readable "${TCTL_ENV_FILE:-}"; then ENV_LAYERS+=("${TCTL_ENV_FILE}"); fi
+
+  for f in "${skipped[@]}"; do dim "  - ${f} (not readable, skipped)"; done
+  [[ ${#ENV_LAYERS[@]} -eq 0 ]] && warn "No readable env files (TCTL_ENV_PROVISION_FILES='${list}', resolved against ${CONFIG_DIR})."
 
   ENV_RENDERED="$(
     echo '#!/usr/bin/env bash'
@@ -378,6 +564,7 @@ mask_secrets() {
 # Pushes the layered env into the VM as /etc/profile.d/tart-provision.sh,
 # which every login shell sources. The host share is auto-mounted via fstab.
 cmd_provision() {
+  require_ssh_settings
   require_running
   load_env_layers
 
@@ -436,6 +623,7 @@ cmd_env() {
 
   if (( do_diff )); then
     echo
+    require_ssh_settings
     require_running
     header "Diff: VM ${ENV_DEST} → local layers"
     local remote
@@ -467,21 +655,19 @@ main() {
       usage
       exit 0
       ;;
+    init)
+      cmd_init
+      exit 0
+      ;;
   esac
 
-  # Discover and source config
-  find_config
+  # Discover and load config layers
+  load_config
 
-  # shellcheck source=/dev/null
-  source "${CONFIG_FILE}"
-
-  # Validate required variables
-  if [[ -z "${TCTL_VM_NAME:-}" ]]; then
-    die "'TCTL_VM_NAME' is not set in '${CONFIG_FILE}'."
-  fi
-
-  printf '%s\n' "${DIM}Config : ${CONFIG_FILE}${RESET}"
+  printf '%s\n' "${DIM}Global : ${GLOBAL_CONFIG_FILE}${RESET}"
+  printf '%s\n' "${DIM}Project: ${CONFIG_FILE}${RESET}"
   printf '%s\n' "${DIM}VM     : ${TCTL_VM_NAME}${RESET}"
+  printf '%s\n' "${DIM}Share  : ${SHARE_DIR:-(none)}${RESET}"
   echo
 
   # Dispatch command

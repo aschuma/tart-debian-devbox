@@ -16,6 +16,8 @@ Automated Debian 12 (Bookworm, ARM64) development VM for Apple Silicon Macs. A s
 
 This project includes content generated with the assistance of artificial intelligence tools. Significant portions of the code, documentation, or other materials may have been created or refined using AI. While efforts have been made to review and validate all outputs, the accuracy and correctness of AI-generated content cannot be guaranteed. Users are encouraged to review and verify the code before use.
 
+> **New here?** Follow [QUICKSTART.md](QUICKSTART.md) — prerequisites, SSH key, building the template image, cloning it, `tart-ctl.sh init`, provisioning, SSH, start/stop. This README is the reference.
+
 ---
 
 ## Architecture
@@ -34,7 +36,7 @@ This project includes content generated with the assistance of artificial intell
 └──────────────────────────────────────────────────────────────--┘
 ```
 
-**Packer** clones the base image, boots it, and runs the Ansible playbook over SSH (password auth as `admin` via paramiko). The result is a local Tart image (default name `debian-ssh`).
+**Packer** clones the base image, boots it, and runs the Ansible playbook over SSH (password auth as `admin` via paramiko). The result is a local Tart image (default name `debian-ssh`) that serves as a **template**: clone it per project (`just clone <name>`) and work in the clones.
 
 **Ansible** is pure orchestration — `playbook.yml` runs these roles in order:
 
@@ -90,7 +92,7 @@ docker ps        # works without sudo
 | Containers    | Docker CE, Buildx, Compose plugin                                                           | apt (docker.com repo) |
 | Base          | git, curl, wget, jq, vim, htop, tree, unzip, zip, rsync, build-essential, postgresql-client | apt                   |
 
-All mise tools are installed **per user** under `/home/devbox/.local/share/mise/` and exposed through mise's PATH management (see [Login Shells](#login-shells--non-interactive-commands)).
+All mise tools are installed **per user** under `/home/devbox/.local/share/mise/` and exposed through mise's PATH management (see [Shell, Prompt & Non-Interactive Commands](#shell-prompt--non-interactive-commands)).
 
 ---
 
@@ -189,23 +191,9 @@ Config files under `/mnt/shared` (the virtiofs host share) and `/home/devbox` ar
 
 ---
 
-## Migrating from the pre-mise image
+## Build the Template Image
 
-If you built an image before the mise refactor:
-
-| Before                                                                      | Now                                                          |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| Users `admin` + `deploy`                                                    | Single `devbox` user; `admin` is build-only                  |
-| Tools under `/opt/{jdk,gradle,maven,graalpy,nvm,uv}`                        | `~/.local/share/mise/installs/<tool>/<version>` for `devbox` |
-| Versions in `roles/<tool>/vars/main.yml`                                    | `group_vars/all/tool_versions.yml`                           |
-| Tags `ssh tools java gradle maven graalpy nvm uv acli copilot-cli opencode` | `user common-tools docker mise runtimes cli-tools verify`    |
-| `gh copilot`                                                                | `copilot` (standalone GitHub Copilot CLI)                    |
-
-Rebuild the image, set `TCTL_SSH_USER="devbox"` in your `.tart-ctl-env`, then run `tart-ctl.sh update-ssh-config` once to rewrite the `User` line in `~/.ssh/config`.
-
----
-
-## Build the VM
+> The build produces a **template**: a clean, fully provisioned Tart image that you should not work in directly. Clone it once per project (`just clone <name>`, see [After the Build](#after-the-build-clone-your-image)) and drive the clones with `tart-ctl.sh`. Rebuilding the template never touches your clones.
 
 ```bash
 # 1. Prerequisites (macOS)
@@ -220,22 +208,31 @@ Or run the steps manually from the `build/` directory:
 ```bash
 cd build/
 packer init debian-ssh.pkr.hcl
-packer validate -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
-packer build -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
+packer validate -var-file="vars.pkrvars.hcl" -var vm_name=debian-ssh debian-ssh.pkr.hcl
+packer build -var-file="vars.pkrvars.hcl" -var vm_name=debian-ssh debian-ssh.pkr.hcl
 ```
 
-Result: a local Tart image named `debian-ssh` (configurable via `vm_name` in `build/vars.pkrvars.hcl`). To build under a different name without touching the existing image:
+Result: a local Tart image named after `BUILD_VM_NAME` in `build/build.env` (`debian-ssh` by default). To build under a different name without touching the existing template:
 
 ```bash
 cd build && packer build -var-file=vars.pkrvars.hcl -var vm_name=debian-ssh-test debian-ssh.pkr.hcl
 ```
 
-### Build-time variables
+### Build-time configuration
 
-Edit `build/vars.pkrvars.hcl`:
+The build has its own configuration, independent of the `tart-ctl.sh` config in `~/.config/tctl/`.
+
+`build/build.env` — used by `provision.sh` and every `just` recipe:
+
+```bash
+BUILD_VM_NAME="debian-ssh"                        # Name of the template image (passed to Packer as vm_name)
+BUILD_SSH_USER="devbox"                           # Account `just reprovision` / `just tools` connect as
+BUILD_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart" # Private key matching ssh_key_path below
+```
+
+`build/vars.pkrvars.hcl` — Packer inputs:
 
 ```hcl
-vm_name      = "debian-ssh"                  # Final image name
 ssh_user     = "admin"                       # Base-image account used by Packer (do not change)
 ssh_password = "admin"                       # Its password
 ssh_key_path = "~/.ssh/id_ed25519_tart.pub"  # Public key injected for the devbox user
@@ -248,6 +245,8 @@ VM resources (CPU/RAM) are set in the `source "tart-cli"` block of `build/debian
 ## Reprovisioning
 
 The playbook is idempotent and can be applied to any running VM built from this image. Already-installed tools are skipped; changed versions are installed.
+
+`just reprovision` and `just tools` target the **template** VM named in `build/build.env`. They go through `build/with-vm.sh`, which starts the template headless if it is stopped, waits for an IP and SSH, runs the command, and shuts the VM down again — a VM that was already running is left running. To apply the playbook to a clone, use the manual command below with the clone's name in `tart ip`.
 
 ```bash
 # everything
@@ -278,33 +277,43 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 
 ## Lifecycle Management
 
-| Task                      | Command                                                                    |
-| ------------------------- | -------------------------------------------------------------------------- |
-| Build image               | `just build`                                                               |
-| Clone image for a project | `tart clone debian-ssh my-project`                                         |
-| Start / stop / status     | `just start`, `just stop`, `just status` (→ `tart-ctl.sh`)                 |
-| Push `.env` into the VM   | `just provision`                                                           |
-| Shell                     | `just ssh`                                                                 |
-| Update `~/.ssh/config`    | `just ssh-config`                                                          |
-| List tools in the VM      | `just tools` (→ `mise ls`)                                                 |
-| Upgrade tools on a VM     | `just reprovision mise,runtimes,cli-tools` or `mise upgrade` inside the VM |
-| Validate templates        | `just validate`                                                            |
-| Lint Ansible/YAML         | `just lint` (also runs in GitHub Actions)                                  |
-| Delete image              | `just clean` (→ `tart delete`)                                             |
+| Task                           | Command                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| Build template image           | `just build`                                                               |
+| Install `tart-ctl.sh`          | `just install` (script → `~/.local/bin`, config → `~/.config/tctl/`)      |
+| Clone template for a project   | `just clone my-project` (→ `tart clone debian-ssh my-project`)             |
+| Mark a project directory       | `tart-ctl.sh init` (writes `.tart-ctl-env`)                                |
+| Start / stop / status          | `tart-ctl.sh up`, `tart-ctl.sh down`, `tart-ctl.sh status`                 |
+| Push env files into the VM     | `tart-ctl.sh provision`                                                    |
+| Shell                          | `tart-ctl.sh ssh`                                                          |
+| Update `~/.ssh/config`         | `tart-ctl.sh update-ssh-config`                                            |
+| List tools in the template VM  | `just tools` (→ `mise ls`; starts/stops the VM as needed)                  |
+| Upgrade tools in the template  | `just reprovision mise,runtimes,cli-tools` (then re-clone) or `mise upgrade` inside a VM |
+| Validate templates             | `just validate`                                                            |
+| Lint Ansible/YAML              | `just lint` (also runs in GitHub Actions)                                  |
+| Delete template image          | `just clean` (→ `tart delete`; clones are unaffected)                      |
 
-The `justfile` is a thin wrapper around `build/provision.sh`, `tart-ctl.sh` and `ansible-playbook`; every recipe can be run by hand. `just start/stop/provision/ssh` must be run from a directory that has a `.tart-ctl-env` (see [VM Instance Control](#vm-instance-control-tart-ctl)).
+The `justfile` covers the **template image** — build, clone, maintenance (`build/provision.sh`, `ansible-playbook`, `tart clone`, `tart delete`); it reads its settings from `build/build.env` and every recipe can be run by hand. Day-to-day **VM control** of your clones (start/stop/provision/ssh) is the job of `tart-ctl.sh`, installed once with `just install`, configured in `~/.config/tctl/config`, and usable from any project directory (see [VM Instance Control](#vm-instance-control-tart-ctl)).
 
 ---
 
 ## After the Build: Clone Your Image
 
-Once the Packer build completes you have a local Tart image named `debian-ssh` (or whatever `vm_name` is set to in `build/vars.pkrvars.hcl`). Rather than rebuilding from scratch for each project or environment, clone the image — this is near-instant compared to the ~10-15 minute build:
+Once the Packer build completes you have a local Tart image named `debian-ssh` (or whatever `BUILD_VM_NAME` is set to in `build/build.env`). Treat it as a **template**: do not start it for daily work. Instead clone it per project — near-instant compared to the ~10-15 minute build — and keep the template untouched as a clean baseline:
 
 ```bash
-tart clone debian-ssh debian-foo
+just clone my-project            # → tart clone debian-ssh my-project
 ```
 
-You can then use `debian-foo` as the base for your day-to-day work, keeping the original `debian-ssh` image untouched as a clean baseline to clone from again at any time.
+Then point the project at the clone and start it with `tart-ctl.sh`:
+
+```bash
+cd ~/Projects/my-project
+tart-ctl.sh init                 # asks for the VM name (my-project) and the share directory → writes .tart-ctl-env
+tart-ctl.sh up
+```
+
+When you later rebuild or reprovision the template, existing clones are not affected — delete a clone (`tart delete my-project`) and re-clone to pick up the changes.
 
 ---
 
@@ -314,43 +323,62 @@ The `bin_template/` folder contains a control script and configuration templates
 
 ### Setup
 
-**1. Install the script** — move `tart-ctl.sh` to any directory on your `$PATH`:
+**1. Install the script and global config** — `tart-ctl.sh` is meant to live on your `$PATH` so it works from any project directory:
 
 ```bash
-mv bin_template/tart-ctl.sh ~/.local/bin/tart-ctl.sh
-chmod +x ~/.local/bin/tart-ctl.sh
+just install                         # copies the script to ~/.local/bin and config_template/* to ~/.config/tctl/
 ```
 
-**2. Add config to your project** — copy the environment files to the root of the Git repository you want to work on inside the VM:
+`TART_CTL_INSTALL_DIR` overrides the script's target directory; existing files in `~/.config/tctl/` are never overwritten. Or do it by hand:
 
 ```bash
-cp bin_template/.tart-ctl-env   ~/Projects/my-project/
-cp bin_template/.env            ~/Projects/my-project/
+mv bin_template/tart-ctl.sh ~/.local/bin/tart-ctl.sh && chmod +x ~/.local/bin/tart-ctl.sh
+mkdir -p ~/.config/tctl && cp config_template/* ~/.config/tctl/
 ```
+
+**2. Mark your project** — in the root of the Git repository you want to work on inside the VM, run `init`. It asks for the VM to manage (warns if no such Tart VM exists yet — clone one with `just clone <name>`) and how to share the project directory, then writes `.tart-ctl-env`:
+
+```bash
+cd ~/Projects/my-project
+tart-ctl.sh init                     # → .tart-ctl-env with TCTL_VM_NAME and TCTL_HOST_SHARE_DIR
+echo 'MY_VAR=value' > .env           # optional: env vars to push into the VM with `provision`
+```
+
+The file is plain shell; edit it any time (commented template: `bin_template/.tart-ctl-env`). `TCTL_VM_NAME` is **required** here — the global config deliberately has no VM name, so every project states which VM it uses.
 
 ### Configuration
 
-Edit `.tart-ctl-env` in your project root. The key variables to configure per project are:
+Settings are layered — the project file overrides the global one:
 
-| Variable              | Description                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| `TCTL_VM_NAME`        | Name of the Tart VM to manage (matches the image name built by Packer)                |
-| `TCTL_HOST_SHARE_DIR` | Host directory shared with the VM; auto-mounted at `/mnt/shared/workspace`            |
-| `TCTL_SSH_USER`       | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged** |
-| `TCTL_IDENTITY_FILE`  | Path to your SSH private key — **keep unchanged**; also used during image creation    |
+| File                      | Purpose                                                                                                     |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `~/.config/tctl/config`   | Global defaults for all projects: `TCTL_SSH_USER`, `TCTL_SSH_CONFIG`, `TCTL_IDENTITY_FILE`, `TCTL_REMOTE_FORWARD`, `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` (template: `config_template/config`; honours `XDG_CONFIG_HOME`) |
+| `<project>/.tart-ctl-env` | Project marker, created by `tart-ctl.sh init`: **`TCTL_VM_NAME` (required)** plus per-project overrides such as `TCTL_HOST_SHARE_DIR` or `TCTL_ENV_PROVISION_FILES` |
+
+| Variable                   | Description                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `TCTL_VM_NAME`             | Name of the Tart VM to manage — **required in `.tart-ctl-env`**, normally a clone of the template (`just clone <name>`). `tart-ctl.sh` refuses to run if it is missing |
+| `TCTL_HOST_SHARE_DIR`      | Host directory shared with the VM at `/mnt/shared/workspace`. `auto` (the default) shares the directory containing `.tart-ctl-env`; a path shares that directory; unset or `""` starts the VM without a share |
+| `TCTL_ENV_PROVISION_FILES` | Comma-separated env files pushed by `provision`, layered in order (default `.env`). Relative entries resolve against the project root; absolute and `~/` paths are used as-is; unreadable entries are skipped |
+| `TCTL_SSH_USER`            | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged**            |
+| `TCTL_SSH_CONFIG`          | SSH client config that `update-ssh-config` maintains (`~/.ssh/config`)                           |
+| `TCTL_IDENTITY_FILE`       | Path to your SSH private key — **keep unchanged**; also used during image creation               |
+| `TCTL_REMOTE_FORWARD`      | Optional `PORT HOST:PORT` written as `RemoteForward` into the VM's `~/.ssh/config` entry         |
+
+The share directory is resolved in this order: a value in `.tart-ctl-env` wins; otherwise the global value applies, where `auto` resolves to the project root (the directory holding `.tart-ctl-env`); if neither is set, nothing is mounted.
 
 ```bash
-# .tart-ctl-env (example)
-TCTL_VM_NAME="my-dev-vm"
-TCTL_HOST_SHARE_DIR="/Users/you/Projects/my-project/"
-TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"   # do not change
+# ~/Projects/my-project/.tart-ctl-env (as written by `tart-ctl.sh init`; everything else comes from ~/.config/tctl/config)
+TCTL_VM_NAME="my-project"                                # the cloned VM for this project (required)
+TCTL_HOST_SHARE_DIR="auto"                               # share this directory; or a path, or "" for no share
+# TCTL_ENV_PROVISION_FILES=".env,.env.local"             # push a personal overrides file on top of .env
 ```
 
-> **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`). Changing it here without rebuilding the image will break SSH access.
+> **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`, private half in `BUILD_IDENTITY_FILE` of `build/build.env`). Changing it here without rebuilding the image will break SSH access.
 
-The optional **`.env`** and **`.env.local`** files (plain `KEY=VALUE` pairs) in the same directory are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: `.env` holds the shared defaults (committed), `.env.local` overrides only the keys you want to change (gitignored) — it does not need to repeat the rest.
+The files listed in **`TCTL_ENV_PROVISION_FILES`** (plain `KEY=VALUE` pairs; by default just `.env` next to `.tart-ctl-env`) are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: later files override only the keys they define and do not need to repeat the rest — e.g. `".env,.env.local"` for committed defaults plus gitignored personal overrides, or `"~/.config/tctl/common.env,.env"` for host-wide variables shared by every project.
 
-Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read. `TCTL_ENV_FILE` adds an optional third layer on top, which is handy for injecting secrets:
+Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read. `TCTL_ENV_FILE` adds one more ad-hoc layer on top of the list, which is handy for injecting secrets:
 
 ```bash
 TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
@@ -358,14 +386,15 @@ TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
 
 ### Usage
 
-`tart-ctl.sh` automatically finds its configuration by walking up from the current directory until it finds `.tart-ctl-env` or reaches the Git root. You can run it from any subdirectory of your project.
+`tart-ctl.sh` loads `~/.config/tctl/config`, then walks up from the current directory to the filesystem root until it finds `.tart-ctl-env`, and sources that on top. You can run it from any subdirectory of your project. If no marker is found, or it lacks `TCTL_VM_NAME`, the script stops with a hint to run `tart-ctl.sh init`.
 
 | Command                         | Aliases | Description                                     |
 | ------------------------------- | ------- | ----------------------------------------------- |
+| `tart-ctl.sh init`              |         | Create `.tart-ctl-env` in the current directory (asks for VM name and share directory) |
 | `tart-ctl.sh start`             | `up`    | Start the VM (with host share if configured)    |
 | `tart-ctl.sh stop`              | `down`  | Stop the running VM                             |
 | `tart-ctl.sh status`            | `st`    | Show whether the VM is running or stopped       |
-| `tart-ctl.sh provision`         | `pr`    | Push `.env` into the VM's `/etc/profile.d/`     |
+| `tart-ctl.sh provision`         | `pr`    | Push the project env files into the VM's `/etc/profile.d/` |
 | `tart-ctl.sh env [--diff]`      |         | Show the effective env; `--diff` compares with VM |
 | `tart-ctl.sh ssh`               | `sh`    | Open an interactive SSH shell in the VM         |
 | `tart-ctl.sh ip`                |         | Print the VM's current IP address               |
@@ -377,7 +406,7 @@ TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
 cd ~/Projects/my-project   # or any subdirectory
 
 tart-ctl.sh up             # start the VM
-tart-ctl.sh provision      # push .env into the VM
+tart-ctl.sh provision      # push the env files into the VM
 tart-ctl.sh ssh            # open a shell inside the VM
 
 tart-ctl.sh down           # shut down when done
@@ -385,7 +414,7 @@ tart-ctl.sh down           # shut down when done
 
 ### What `provision` Does
 
-The `provision` command reads `.env`, then `.env.local`, then `TCTL_ENV_FILE` (whichever exist) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
+The `provision` command reads the files listed in `TCTL_ENV_PROVISION_FILES` in order, then `TCTL_ENV_FILE` (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
 To inspect the result **before** pushing, use `tart-ctl.sh env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tart-ctl.sh env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
 
@@ -454,7 +483,7 @@ IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore 
 
 ### Option 2: Mount Project via Tart Share
 
-Set `TCTL_HOST_SHARE_DIR` in `.tart-ctl-env` to your local project path, then:
+With the default `TCTL_HOST_SHARE_DIR="auto"` the project root (the directory holding `.tart-ctl-env`) is shared automatically; set an explicit path in `.tart-ctl-env` to share something else. Then:
 
 ```bash
 tart-ctl.sh up          # starts VM with the host share attached (auto-mounted)
@@ -559,7 +588,7 @@ ls -la /mnt/shared/workspace/
 
 **Common issues**:
 
-- **VM not started with a share**: `tart-ctl.sh start` only passes `--dir` when `TCTL_HOST_SHARE_DIR` is set in `.tart-ctl-env`. Verify the variable is set and the path exists on the host.
+- **VM not started with a share**: `tart-ctl.sh start` only passes `--dir` when the resolved `TCTL_HOST_SHARE_DIR` is non-empty (`auto` → project root, or an explicit path from `.tart-ctl-env` / `~/.config/tctl/config`). `tart-ctl.sh status` shows the resolved `Share` path; verify it exists on the host.
 - **Wrong mount tag**: Tart uses a single fixed tag `com.apple.virtio-fs.automount` for all shares — do not use the share name as the mount device.
 - **`dmesg` shows `tag <name> not found`**: Confirms the wrong tag is being used — switch to `com.apple.virtio-fs.automount`.
 
@@ -569,11 +598,13 @@ ls -la /mnt/shared/workspace/
 
 ```
 .
-├── justfile                        # Host-side task runner (build, start, ssh, reprovision, …)
-├── build/                          # Image creation (Packer + Ansible)
+├── justfile                        # Host-side task runner for the template image (build, clone, reprovision, clean)
+├── build/                          # Template image creation (Packer + Ansible)
+│   ├── build.env                   # Build-side config: BUILD_VM_NAME, BUILD_SSH_USER, BUILD_IDENTITY_FILE
 │   ├── debian-ssh.pkr.hcl          # Packer template (plugins, source, provisioners)
-│   ├── vars.pkrvars.hcl            # Variable values (VM name, build SSH credentials, pub key)
-│   ├── provision.sh                # packer init → validate → build
+│   ├── vars.pkrvars.hcl            # Packer inputs (build SSH credentials, pub key)
+│   ├── provision.sh                # packer init → validate → build (vm_name from build.env)
+│   ├── with-vm.sh                  # Runs a command against the template VM; auto-starts and auto-stops it (used by just reprovision/tools)
 │   └── ansible/
 │       ├── playbook.yml            # Orchestration only — role order, no inline tasks
 │       ├── group_vars/all/
@@ -589,10 +620,11 @@ ls -la /mnt/shared/workspace/
 │           ├── cli_tools/          # mise install of CLI tools + verify commands
 │           ├── shell/              # zsh login shell, zshenv/zshrc templates, starship.toml, completions
 │           └── verify/             # final verification gate
-├── bin_template/                   # VM instance control (copy to your project)
-│   ├── tart-ctl.sh                 # Control script — install to $PATH
-│   ├── .tart-ctl-env               # Per-project config (VM name, share dir, SSH user devbox)
-│   ├── .env                        # Project env vars pushed into the VM by `tart-ctl.sh provision`
-│   └── .env.local                  # Personal overrides, layered on top of .env
+├── bin_template/                   # VM instance control
+│   ├── tart-ctl.sh                 # Control script — install to $PATH (`just install`)
+│   └── .tart-ctl-env               # Project marker template (what `tart-ctl.sh init` generates: VM name, share dir, env files)
+├── config_template/                # Copied to ~/.config/tctl/ by `just install`
+│   └── config                      # Global tart-ctl defaults (SSH user/key, remote forward, share mode, env files — no VM name)
+├── QUICKSTART.md                   # Step-by-step first-time setup
 └── README.md
 ```

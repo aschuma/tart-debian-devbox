@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project builds a Debian 12 (Bookworm, ARM64) development VM image for Apple Silicon Macs using **Packer** + **Tart** + **Ansible**. Packer clones a base image, boots it, and runs an Ansible playbook to provision tools. The result is a local Tart VM image named `debian-ssh`.
+This project builds a Debian 12 (Bookworm, ARM64) development VM image for Apple Silicon Macs using **Packer** + **Tart** + **Ansible**. Packer clones a base image, boots it, and runs an Ansible playbook to provision tools. The result is a local Tart VM image named `debian-ssh` (from `BUILD_VM_NAME` in `build/build.env`). That image is a **template**: users clone it per project (`just clone <name>`) and manage the clones with `tart-ctl.sh`; the template itself is only rebuilt/reprovisioned.
 
 Developer tooling is managed by **mise** (https://mise.jdx.dev) for a single `devbox` user. Only base OS packages, Docker, and the mise binary come from apt.
 
@@ -15,17 +15,23 @@ just build                 # or ./build/provision.sh
 # Validate without building
 just validate              # packer validate + ansible-playbook --syntax-check
 
-# Or step-by-step (from build/ directory)
+# Or step-by-step (from build/ directory; vm_name defaults to debian-ssh in the .pkr.hcl)
 cd build/
 packer init debian-ssh.pkr.hcl
-packer validate -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
-packer build -var-file="vars.pkrvars.hcl" debian-ssh.pkr.hcl
+packer validate -var-file="vars.pkrvars.hcl" -var vm_name=debian-ssh debian-ssh.pkr.hcl
+packer build -var-file="vars.pkrvars.hcl" -var vm_name=debian-ssh debian-ssh.pkr.hcl
 
 # Test build under a different image name (does not overwrite debian-ssh)
 cd build && packer build -var-file=vars.pkrvars.hcl -var vm_name=debian-ssh-test debian-ssh.pkr.hcl
+
+# Clone the template for a project
+just clone my-project      # tart clone debian-ssh my-project
+cd ~/Projects/my-project && tart-ctl.sh init   # interactive: writes .tart-ctl-env (TCTL_VM_NAME, TCTL_HOST_SHARE_DIR)
 ```
 
-## Reprovision a Running VM (Single Role)
+## Reprovision the Template VM (Single Role)
+
+`just reprovision` / `just tools` target the template VM named in `build/build.env` via `build/with-vm.sh`: it starts the VM headless if stopped, waits for IP + SSH, substitutes `__VM_IP__` in the command args (and exports `VM_IP`), runs the command, and stops the VM again only if it started it. A manual `ansible-playbook` run needs the VM running already.
 
 ```bash
 just reprovision <tags>    # e.g. just reprovision mise,runtimes
@@ -45,11 +51,13 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 ## Architecture
 
 ```
-justfile                     # Host task runner: build, validate, start/stop/ssh (via tart-ctl), reprovision
+justfile                     # Host task runner for the template image: build, validate, lint, install (tart-ctl.sh + config), clone, reprovision, tools, clean. Reads build/build.env (never the tctl config)
 build/
+  build.env                  # Build-side config: BUILD_VM_NAME (→ packer -var vm_name), BUILD_SSH_USER, BUILD_IDENTITY_FILE
   debian-ssh.pkr.hcl         # Packer template — source image, provisioners
-  vars.pkrvars.hcl           # VM identity, build SSH credentials, public key path
-  provision.sh               # packer init → validate → build
+  vars.pkrvars.hcl           # Build SSH credentials, public key path (no vm_name — comes from build.env)
+  provision.sh               # packer init → validate → build; prints "clone it" hint afterwards
+  with-vm.sh                 # [-C dir] cmd… — ensure template VM running (start if needed), wait for SSH, run cmd with __VM_IP__ substituted, stop if it started it
   ansible/
     playbook.yml             # Pure orchestration: runs roles in order, no inline tasks
     group_vars/all/
@@ -68,9 +76,15 @@ build/
       verify/                # final gate: groups, mise doctor, all *_verify_commands, docker, sudo
 
 bin_template/
-  tart-ctl.sh                # start/stop/status/provision/env/ssh/ip/update-ssh-config
-  .tart-ctl-env              # TCTL_VM_NAME, TCTL_SSH_USER=devbox, TCTL_IDENTITY_FILE, TCTL_HOST_SHARE_DIR
-  .env / .env.local          # Project env vars pushed into the VM by `tart-ctl.sh provision`
+  tart-ctl.sh                # init/start/stop/status/provision/env/ssh/ip/update-ssh-config (bash 3.2 compatible)
+  .tart-ctl-env              # Project marker template — what `tart-ctl.sh init` generates; found by walking up to /.
+                             #   MUST set TCTL_VM_NAME (script dies otherwise); may override TCTL_HOST_SHARE_DIR, TCTL_ENV_PROVISION_FILES
+config_template/             # Copied to ~/.config/tctl/ by `just install` (existing files kept)
+  config                     # Global defaults, sourced first — intentionally NO TCTL_VM_NAME: TCTL_SSH_USER=devbox,
+                             #   TCTL_SSH_CONFIG, TCTL_IDENTITY_FILE, TCTL_REMOTE_FORWARD,
+                             #   TCTL_HOST_SHARE_DIR=auto (auto = dir containing .tart-ctl-env; path; or unset = no share),
+                             #   TCTL_ENV_PROVISION_FILES=.env (comma-separated; relative to project root, or absolute/~)
+QUICKSTART.md                # First-time setup walkthrough (keep in sync with justfile/tart-ctl.sh commands)
 ```
 
 Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → shell → verify`.
@@ -130,4 +144,4 @@ ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 
 ### Environment Variables on the VM
 
-`tart-ctl.sh provision` renders `.env` → `.env.local` → `TCTL_ENV_FILE` (layered, later keys win) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. Sources may be FIFOs/process substitutions (1Password); each is read exactly once. The file persists in the VM and is sourced by every login shell (bash and zsh).
+`tart-ctl.sh provision` renders the files in `TCTL_ENV_PROVISION_FILES` (comma-separated, default `.env`; relative to the `.tart-ctl-env` directory, absolute/`~` as-is) → `TCTL_ENV_FILE` (layered, later keys win) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. Sources may be FIFOs/process substitutions (1Password); each is read exactly once. The file persists in the VM and is sourced by every login shell (bash and zsh).
