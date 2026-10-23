@@ -24,6 +24,7 @@ source "tart-cli" "debian" {
   vm_name      = var.vm_name
   cpu_count    = 4
   memory_gb    = 10
+  disk_size_gb = 20
   headless     = true
 
   ssh_username = var.ssh_user
