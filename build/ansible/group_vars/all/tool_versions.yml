@@ -40,6 +40,7 @@ mise_cli_tools:
   ruff: "latest"
   acli: "latest"
   starship: "latest"
+  just: "1.59.0"
   # AI coding assistants
   copilot: "latest"
   codex: "latest"
