@@ -474,6 +474,8 @@ render_env_exports() {
   echo "# --- ${file} ---"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     line="${line%$'\r'}"                       # tolerate CRLF
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
     [[ "${line}" =~ ^[[:space:]]*(#|$) ]] && continue
     line="${line#export }"                     # tolerate `export KEY=VALUE`
     key="${line%%=*}"; key="${key//[[:space:]]/}"
