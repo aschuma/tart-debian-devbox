@@ -78,10 +78,10 @@ build/
 bin_template/
   tart-ctl.sh                # init/start/stop/status/provision/env/ssh/ip/update-ssh-config (bash 3.2 compatible)
   .tart-ctl-env              # Project marker template — what `tart-ctl.sh init` generates; found by walking up to /.
-                             #   MUST set TCTL_VM_NAME (script dies otherwise); may override TCTL_HOST_SHARE_DIR, TCTL_ENV_PROVISION_FILES
+                             #   MUST set TCTL_VM_NAME (script dies otherwise); may override TCTL_HOST_SHARE_DIR, TCTL_ENV_PROVISION_FILES, TCTL_LOCAL_FORWARD/TCTL_REMOTE_FORWARD
 config_template/             # Copied to ~/.config/tctl/ by `just install` (existing files kept)
   config                     # Global defaults, sourced first — intentionally NO TCTL_VM_NAME: TCTL_SSH_USER=devbox,
-                             #   TCTL_SSH_CONFIG, TCTL_IDENTITY_FILE, TCTL_REMOTE_FORWARD,
+                             #   TCTL_SSH_CONFIG, TCTL_IDENTITY_FILE, TCTL_REMOTE_FORWARD / TCTL_LOCAL_FORWARD (comma-separated ssh forward specs),
                              #   TCTL_HOST_SHARE_DIR=auto (auto = dir containing .tart-ctl-env; path; or unset = no share),
                              #   TCTL_ENV_PROVISION_FILES=.env (comma-separated; relative to project root, or absolute/~)
 QUICKSTART.md                # First-time setup walkthrough (keep in sync with justfile/tart-ctl.sh commands)

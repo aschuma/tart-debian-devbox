@@ -19,3 +19,20 @@ TCTL_VM_NAME="my-project"
 # ── Env files to push with `tart-ctl.sh provision` (optional) ────────────────
 # Comma-separated; relative to this directory, or absolute. Default: ".env"
 # TCTL_ENV_PROVISION_FILES=".env,.env.local"
+
+# ── Port forwards written to ~/.ssh/config by `update-ssh-config` (optional) ─
+# Comma-separated ssh "PORT HOST:PORT" specs; a value here replaces the one
+# from the global config for this project.
+#
+# TCTL_LOCAL_FORWARD  (host → VM): makes ports that only listen on the VM's
+#   loopback reachable on the Mac while `ssh my-project` is connected, e.g.
+#   Postgres/RabbitMQ started inside the VM.
+#   Default: "" (none).
+# TCTL_LOCAL_FORWARD="5432 127.0.0.1:5432"                          # PostgreSQL
+# TCTL_LOCAL_FORWARD="5672 127.0.0.1:5672"                          # RabbitMQ (AMQP)
+# TCTL_LOCAL_FORWARD="1080 127.0.0.1:1080"                          # SOCKS5 proxy
+# TCTL_LOCAL_FORWARD="5432 127.0.0.1:5432,5672 127.0.0.1:5672,1080 127.0.0.1:1080" # all three
+#
+# TCTL_REMOTE_FORWARD (VM → host): the reverse direction.
+#   Default: "1080 127.0.0.1:1080" (SOCKS proxy from the Mac). Set "" to disable.
+# TCTL_REMOTE_FORWARD=""

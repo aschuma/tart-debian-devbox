@@ -124,7 +124,10 @@ ${BOLD}VARIABLES${RESET}
         TCTL_SSH_USER       SSH user inside the VM                (required for ssh/provision)
         TCTL_SSH_CONFIG     Path to SSH client config file        (required for ssh/provision)
         TCTL_IDENTITY_FILE  Path to SSH private key               (required for ssh/provision)
-        TCTL_REMOTE_FORWARD Optional "PORT HOST:PORT" written as RemoteForward to ~/.ssh/config
+        TCTL_REMOTE_FORWARD Optional comma-separated "PORT HOST:PORT" specs written as
+                            RemoteForward (VM → host) to ~/.ssh/config
+        TCTL_LOCAL_FORWARD  Optional comma-separated "PORT HOST:PORT" specs written as
+                            LocalForward (host → VM) to ~/.ssh/config
         TCTL_HOST_SHARE_DIR Host directory to mount into the VM   (optional)
                             "auto" = the directory containing ${ENV_FILE_NAME}
         TCTL_ENV_PROVISION_FILES
@@ -372,6 +375,27 @@ cmd_ip() {
   echo "${VM_IP}"
 }
 
+# Prints the managed RemoteForward / LocalForward lines for the ~/.ssh/config
+# Host block, one per comma-separated entry of TCTL_REMOTE_FORWARD and
+# TCTL_LOCAL_FORWARD (each entry is an ssh "PORT HOST:PORT" spec).
+render_forward_lines() {
+  local keyword list entry
+  for keyword in RemoteForward LocalForward; do
+    case "${keyword}" in
+      RemoteForward) list="${TCTL_REMOTE_FORWARD:-}" ;;
+      LocalForward)  list="${TCTL_LOCAL_FORWARD:-}" ;;
+    esac
+    local IFS=','
+    for entry in ${list}; do
+      entry="${entry#"${entry%%[![:space:]]*}"}"
+      entry="${entry%"${entry##*[![:space:]]}"}"
+      if [[ -n "${entry}" ]]; then
+        printf '    %s %s\n' "${keyword}" "${entry}"
+      fi
+    done
+  done
+}
+
 cmd_update_ssh_config() {
   require_ssh_settings
   require_running
@@ -383,25 +407,32 @@ cmd_update_ssh_config() {
   touch "${TCTL_SSH_CONFIG}"
   chmod 600 "${TCTL_SSH_CONFIG}"
 
+  local forward_lines
+  forward_lines="$(render_forward_lines)"
+
   if grep -q "^Host ${TCTL_VM_NAME}$" "${TCTL_SSH_CONFIG}"; then
-    # Update the managed settings in an existing block (BSD & GNU awk compatible via temp file)
+    # Update the managed settings in an existing block (BSD & GNU awk compatible via temp file).
+    # All existing RemoteForward/LocalForward lines of the block are replaced by the
+    # configured set, emitted where the first one was (or at the end of the block).
     local tmpfile
     tmpfile="$(mktemp)"
+    # awk -v does not accept literal newlines (BSD awk), but decodes the escape \n.
     awk -v host="${TCTL_VM_NAME}" -v ip="${ip}" -v user="${TCTL_SSH_USER}" \
-      -v remote="${TCTL_REMOTE_FORWARD:-}" '
+      -v forwards="${forward_lines//$'\n'/\\n}" '
+      function emit_forwards() {
+        if (forwards != "") print forwards
+        forward_done = 1
+      }
       function finish_block() {
-        if (in_block && !forward_done && remote != "")
-          print "    RemoteForward " remote
+        if (in_block && !forward_done) emit_forwards()
       }
       /^Host / {
         finish_block()
         in_block = ($2 == host)
         forward_done = 0
       }
-      in_block && /^[[:space:]]+RemoteForward[[:space:]]/ {
-        if (remote != "" && !forward_done)
-          print "    RemoteForward " remote
-        forward_done = 1
+      in_block && /^[[:space:]]+(RemoteForward|LocalForward)[[:space:]]/ {
+        if (!forward_done) emit_forwards()
         next
       }
       in_block && /^[[:space:]]+HostName / { sub(/HostName .*/, "HostName " ip) }
@@ -414,11 +445,8 @@ cmd_update_ssh_config() {
     info "Updated existing '${TCTL_VM_NAME}' entry → ${ip}"
   else
     # Append a new Host block
-    local remote_forward=""
-    if [[ -n "${TCTL_REMOTE_FORWARD:-}" ]]; then
-      remote_forward="    RemoteForward ${TCTL_REMOTE_FORWARD}"
-    fi
-    cat >> "${TCTL_SSH_CONFIG}" <<EOF
+    {
+      cat <<EOF
 
 Host ${TCTL_VM_NAME}
     HostName ${ip}
@@ -427,8 +455,11 @@ Host ${TCTL_VM_NAME}
     IdentitiesOnly yes
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-${remote_forward}
 EOF
+      if [[ -n "${forward_lines}" ]]; then
+        printf '%s\n' "${forward_lines}"
+      fi
+    } >> "${TCTL_SSH_CONFIG}"
     info "Added new '${TCTL_VM_NAME}' entry → ${ip}"
   fi
 }

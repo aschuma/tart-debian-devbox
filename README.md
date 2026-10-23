@@ -352,8 +352,8 @@ Settings are layered — the project file overrides the global one:
 
 | File                      | Purpose                                                                                                     |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `~/.config/tctl/config`   | Global defaults for all projects: `TCTL_SSH_USER`, `TCTL_SSH_CONFIG`, `TCTL_IDENTITY_FILE`, `TCTL_REMOTE_FORWARD`, `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` (template: `config_template/config`; honours `XDG_CONFIG_HOME`) |
-| `<project>/.tart-ctl-env` | Project marker, created by `tart-ctl.sh init`: **`TCTL_VM_NAME` (required)** plus per-project overrides such as `TCTL_HOST_SHARE_DIR` or `TCTL_ENV_PROVISION_FILES` |
+| `~/.config/tctl/config`   | Global defaults for all projects: `TCTL_SSH_USER`, `TCTL_SSH_CONFIG`, `TCTL_IDENTITY_FILE`, `TCTL_REMOTE_FORWARD`, `TCTL_LOCAL_FORWARD`, `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` (template: `config_template/config`; honours `XDG_CONFIG_HOME`) |
+| `<project>/.tart-ctl-env` | Project marker, created by `tart-ctl.sh init`: **`TCTL_VM_NAME` (required)** plus per-project overrides such as `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` or `TCTL_LOCAL_FORWARD` |
 
 | Variable                   | Description                                                                                      |
 | -------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -363,7 +363,8 @@ Settings are layered — the project file overrides the global one:
 | `TCTL_SSH_USER`            | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged**            |
 | `TCTL_SSH_CONFIG`          | SSH client config that `update-ssh-config` maintains (`~/.ssh/config`)                           |
 | `TCTL_IDENTITY_FILE`       | Path to your SSH private key — **keep unchanged**; also used during image creation               |
-| `TCTL_REMOTE_FORWARD`      | Optional `PORT HOST:PORT` written as `RemoteForward` into the VM's `~/.ssh/config` entry         |
+| `TCTL_REMOTE_FORWARD`      | Optional comma-separated `PORT HOST:PORT` specs written as `RemoteForward` (VM → host) into the VM's `~/.ssh/config` entry (default `"1080 127.0.0.1:1080"`, a SOCKS proxy from the Mac; `""` disables) |
+| `TCTL_LOCAL_FORWARD`       | Optional comma-separated `PORT HOST:PORT` specs written as `LocalForward` (host → VM) into the VM's `~/.ssh/config` entry (default `""`), e.g. `"5432 127.0.0.1:5432,15672 127.0.0.1:15672"` (PostgreSQL + RabbitMQ UI) |
 
 The share directory is resolved in this order: a value in `.tart-ctl-env` wins; otherwise the global value applies, where `auto` resolves to the project root (the directory holding `.tart-ctl-env`); if neither is set, nothing is mounted.
 
@@ -372,7 +373,10 @@ The share directory is resolved in this order: a value in `.tart-ctl-env` wins; 
 TCTL_VM_NAME="my-project"                                # the cloned VM for this project (required)
 TCTL_HOST_SHARE_DIR="auto"                               # share this directory; or a path, or "" for no share
 # TCTL_ENV_PROVISION_FILES=".env,.env.local"             # push a personal overrides file on top of .env
+# TCTL_LOCAL_FORWARD="5432 127.0.0.1:5432,15672 127.0.0.1:15672"  # reach VM-local Postgres / RabbitMQ UI from the Mac via `ssh my-project`
 ```
+
+**Port forwards** are plain ssh `RemoteForward`/`LocalForward` entries that `update-ssh-config` keeps in the VM's `Host` block (it replaces the previously managed lines, so removing an entry from the config removes it from `~/.ssh/config` on the next run). They are active for the lifetime of an `ssh my-project` session (or `tart-ctl.sh ssh`); use `ssh -N my-project` for a tunnel-only connection. Note that services inside the VM bound to `0.0.0.0` — Docker's `-p` publishes this way by default — are reachable directly at `http://$(tart-ctl.sh ip):PORT` without any forward; `TCTL_LOCAL_FORWARD` is for services that only listen on the VM's loopback.
 
 > **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`, private half in `BUILD_IDENTITY_FILE` of `build/build.env`). Changing it here without rebuilding the image will break SSH access.
 
