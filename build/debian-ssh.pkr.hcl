@@ -11,7 +11,6 @@ packer {
   }
 }
 
-
 variable "vm_name"      { default = "debian-ssh" }
 variable "ssh_user"     { default = "admin" }
 variable "ssh_password" {
@@ -61,3 +60,5 @@ build {
     ]
   }
 }
+
+
