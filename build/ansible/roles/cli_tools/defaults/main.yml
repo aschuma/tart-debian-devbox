@@ -8,6 +8,7 @@ cli_tools_verify_commands:
   - uv --version
   - ruff --version
   - acli --version
+  - just --version
   - copilot --version
   - codex --version
   - opencode --version
