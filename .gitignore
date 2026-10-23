@@ -1,4 +1,6 @@
-!bin/
-!bin/**
 local/
 local/**
+bin
+
+# ansible-lint / ansible-galaxy install collections here
+.ansible/

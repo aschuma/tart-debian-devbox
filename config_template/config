@@ -1,0 +1,34 @@
+# tart-ctl global configuration — ~/.config/tctl/config
+# Sourced by tart-ctl.sh before the project-local .tart-ctl-env, which may
+# override any of these values. Standard shell variable syntax.
+#
+# The VM name (TCTL_VM_NAME) is deliberately NOT set here: every project names
+# its own VM in its .tart-ctl-env (create one with `tart-ctl.sh init`).
+
+# ── Reverse port forward written to ~/.ssh/config by update-ssh-config ────────
+# Exposes a local SOCKS proxy on port 1080 inside the VM.
+TCTL_REMOTE_FORWARD="1080 127.0.0.1:1080"
+
+# ── Host share directory (mounted in the VM at /mnt/shared/workspace) ─────────
+#   "auto"   share the directory that contains the project's .tart-ctl-env
+#   "/path"  share a fixed directory for every project
+#   unset    start the VM without a share
+# A project's .tart-ctl-env can override this value.
+TCTL_HOST_SHARE_DIR="auto"
+
+# ── Env files pushed into the VM by `tart-ctl.sh provision` ──────────────────
+# Comma-separated, plain KEY=VALUE files, layered in order (later files override
+# individual keys of earlier ones). Relative entries resolve against the
+# project root (the directory containing .tart-ctl-env); absolute and ~/ paths
+# are used as-is. Unreadable entries are skipped.
+#   e.g. ".env,.env.local"  or  "~/.config/tctl/common.env,.env"
+TCTL_ENV_PROVISION_FILES=".env"
+
+# ── SSH / host settings ───────────────────────────────────────────────────────
+# These must match the image built by this repo — do not change unless you
+# also change the Packer build (ssh_key_path in build/vars.pkrvars.hcl).
+TCTL_SSH_USER="devbox"
+TCTL_SSH_CONFIG="${HOME}/.ssh/config"
+TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"
+
+

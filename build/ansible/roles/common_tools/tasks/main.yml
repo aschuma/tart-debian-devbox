@@ -16,17 +16,33 @@
       - tree
       - rsync
       - gnupg
+      - acl
+      - bash-completion
       - ca-certificates
       - lsb-release
       - apt-transport-https
       - build-essential
-      - python3-pip
       - postgresql-client
     state: present
 
-- name: Configure Git defaults
-  become: false
-  ansible.builtin.shell: |
-    git config --global core.autocrlf input
-    git config --global init.defaultBranch main
-  changed_when: false
+# Tart exposes every `--dir=NAME:PATH` share under one fixed virtiofs tag.
+# systemd automount mounts it on first access; `nofail` + `noauto` keep boot
+# clean when the VM was started without a share.
+- name: Auto-mount the Tart virtiofs share at boot
+  ansible.posix.mount:
+    path: /mnt/shared
+    src: com.apple.virtio-fs.automount
+    fstype: virtiofs
+    opts: noauto,x-systemd.automount,nofail
+    state: present
+
+- name: Configure Git defaults for {{ devbox_user }}
+  become: true
+  become_user: "{{ devbox_user }}"
+  community.general.git_config:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    scope: global
+  loop:
+    - { name: core.autocrlf, value: input }
+    - { name: init.defaultBranch, value: main }

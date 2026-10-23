@@ -1,6 +1,0 @@
----
-galaxy_info:
-  description: Installs Atlassian CLI (acli) from the official Atlassian apt repository
-  min_ansible_version: "2.14"
-
-dependencies: []

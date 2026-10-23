@@ -1,15 +1,21 @@
-# tart-ctl configuration
-# This file is sourced by tart-ctl.sh — use standard shell variable syntax.
-# All variables use the TCTL_ prefix to avoid collisions with the environment.
+# tart-ctl project marker — place in the root of the project you work on in the VM.
+# Generate one interactively with:  tart-ctl.sh init
+#
+# Global defaults come from ~/.config/tctl/config; anything set here overrides
+# them for this project only. Relative env files (.env) resolve against this
+# file's directory.
 
-# ── VM identity ───────────────────────────────────────────────────────────────
-TCTL_VM_NAME="debian-ssh"
+# ── VM to manage (required) ──────────────────────────────────────────────────
+# Usually a clone of the template image:  just clone my-project
+TCTL_VM_NAME="my-project"
 
-# ── SSH / host settings ───────────────────────────────────────────────────────
-# Do not touch these unless you know what you're doing — tart-ctl relies on these settings to manage the VM.
-TCTL_SSH_USER="admin"
-TCTL_SSH_CONFIG="${HOME}/.ssh/config"
-TCTL_IDENTITY_FILE="${HOME}/.ssh/id_ed25519_tart"
+# ── Host share directory (optional) ──────────────────────────────────────────
+# Mounted inside the VM at /mnt/shared/workspace. Defaults to the value in the
+# global config ("auto" = this file's directory). Set a path to share a
+# different directory, or "" to start this project's VM without a share.
+# TCTL_HOST_SHARE_DIR="/Users/you/Projects/my-project/"
+# TCTL_HOST_SHARE_DIR=""
 
-# ── Host share directory (optional — omit to start VM without a share) ────────
-# TCTL_HOST_SHARE_DIR="/Users/aschuma/Projects.Aschuma/"
+# ── Env files to push with `tart-ctl.sh provision` (optional) ────────────────
+# Comma-separated; relative to this directory, or absolute. Default: ".env"
+# TCTL_ENV_PROVISION_FILES=".env,.env.local"
