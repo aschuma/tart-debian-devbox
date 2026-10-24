@@ -124,7 +124,7 @@ tart-ctl.sh provision           # → /etc/profile.d/tart-provision.sh in the VM
 tart-ctl.sh ssh -- 'echo $MY_API_URL'
 ```
 
-Layer files with `TCTL_ENV_PROVISION_FILES=".env,.env.local"` in `.tart-ctl-env`, or inject secrets ad hoc: `TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision`. `tart-ctl.sh env --diff` tells you when the VM is out of date.
+Layer files with `TCTL_ENV_PROVISION_FILES=".env,.env.local"` in `.tart-ctl-env`. `tart-ctl.sh env --diff` tells you when the VM is out of date.
 
 ## 9. Daily loop
 

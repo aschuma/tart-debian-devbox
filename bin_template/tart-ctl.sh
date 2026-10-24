@@ -130,7 +130,6 @@ ${BOLD}OPTIONAL${RESET}
     TCTL_REMOTE_FORWARD       Comma-separated SSH RemoteForward entries ("PORT HOST:PORT").
     TCTL_LOCAL_FORWARD        Comma-separated SSH LocalForward entries ("PORT HOST:PORT").
     TCTL_ENV_PROVISION_FILES  Comma-separated env file list (default: "${ENV_PROVISION_FILES_DEFAULT}").
-    TCTL_ENV_FILE             Extra top-priority env layer (path, FIFO, or process substitution).
 
 ${BOLD}ENV LAYERS${RESET}
     Env files are read in order; later keys override earlier keys.
@@ -549,7 +548,6 @@ env_readable() { [[ -n "$1" && -r "$1" && ! -d "$1" ]]; }
 #   1..n  TCTL_ENV_PROVISION_FILES  comma-separated list (default ".env"); relative
 #         entries resolve against the directory holding .tart-ctl-env, absolute
 #         and ~/ entries are used as-is. Unreadable entries are skipped.
-#   n+1   TCTL_ENV_FILE             optional ad-hoc source, e.g. <(op inject -i .env.tpl)
 readonly ENV_DEST="/etc/profile.d/tart-provision.sh"
 readonly ENV_PROVISION_FILES_DEFAULT=".env"
 ENV_LAYERS=()
@@ -579,7 +577,6 @@ load_env_layers() {
     f="$(resolve_env_path "${entry}")" || continue
     if env_readable "${f}"; then ENV_LAYERS+=("${f}"); else skipped+=("${f}"); fi
   done
-  if env_readable "${TCTL_ENV_FILE:-}"; then ENV_LAYERS+=("${TCTL_ENV_FILE}"); fi
 
   for f in "${skipped[@]}"; do dim "  - ${f} (not readable, skipped)"; done
   [[ ${#ENV_LAYERS[@]} -eq 0 ]] && warn "No readable env files (TCTL_ENV_PROVISION_FILES='${list}', resolved against ${CONFIG_DIR})."

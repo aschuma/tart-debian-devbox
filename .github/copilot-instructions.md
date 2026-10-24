@@ -144,4 +144,4 @@ ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 
 ### Environment Variables on the VM
 
-`tart-ctl.sh provision` renders the files in `TCTL_ENV_PROVISION_FILES` (comma-separated, default `.env`; relative to the `.tart-ctl-env` directory, absolute/`~` as-is) → `TCTL_ENV_FILE` (layered, later keys win) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. Sources may be FIFOs/process substitutions (1Password); each is read exactly once. The file persists in the VM and is sourced by every login shell (bash and zsh).
+`tart-ctl.sh provision` renders the files in `TCTL_ENV_PROVISION_FILES` (comma-separated, default `.env`; relative to the `.tart-ctl-env` directory, absolute/`~` as-is, layered with later keys winning) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. Sources may be FIFOs/process substitutions (1Password); each is read exactly once. The file persists in the VM and is sourced by every login shell (bash and zsh).

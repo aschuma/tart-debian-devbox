@@ -382,11 +382,7 @@ TCTL_HOST_SHARE_DIR="auto"                               # share this directory;
 
 The files listed in **`TCTL_ENV_PROVISION_FILES`** (plain `KEY=VALUE` pairs; by default just `.env` next to `.tart-ctl-env`) are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: later files override only the keys they define and do not need to repeat the rest — e.g. `".env,.env.local"` for committed defaults plus gitignored personal overrides, or `"~/.config/tctl/common.env,.env"` for host-wide variables shared by every project.
 
-Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read. `TCTL_ENV_FILE` adds one more ad-hoc layer on top of the list, which is handy for injecting secrets:
-
-```bash
-TCTL_ENV_FILE=<(op inject -i .env.tpl) tart-ctl.sh provision
-```
+Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read.
 
 ### Usage
 
@@ -418,7 +414,7 @@ tart-ctl.sh down           # shut down when done
 
 ### What `provision` Does
 
-The `provision` command reads the files listed in `TCTL_ENV_PROVISION_FILES` in order, then `TCTL_ENV_FILE` (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
+The `provision` command reads the files listed in `TCTL_ENV_PROVISION_FILES` in order (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
 To inspect the result **before** pushing, use `tart-ctl.sh env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tart-ctl.sh env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
 
