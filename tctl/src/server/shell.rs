@@ -28,6 +28,9 @@ const MAX_SHELLS_PER_VM: usize = 4;
 const MAX_CLIENT_MESSAGE: usize = 64 * 1024;
 const HEARTBEAT: Duration = Duration::from_secs(30);
 /// A healthy client answers pings, so silence this long means a dead peer.
+/// Also the bound for a single WebSocket send: a client that cannot accept one
+/// frame within this time is treated as gone, so a stalled TCP window can never
+/// pin the session (and its ssh process and shell slot) past the heartbeat.
 /// This is liveness detection, not an idle logout.
 const DEAD_PEER: Duration = Duration::from_secs(90);
 
@@ -174,15 +177,24 @@ fn spawn_pty(target: &SshTarget) -> Result<PtySession, ApiError> {
     })
 }
 
+/// Sends one frame, giving up after [`DEAD_PEER`]. Returns `false` when the
+/// peer is gone or stalled; callers then tear the session down.
+async fn send_bounded(socket: &mut WebSocket, message: Message) -> bool {
+    matches!(
+        tokio::time::timeout(DEAD_PEER, socket.send(message)).await,
+        Ok(Ok(()))
+    )
+}
+
 async fn session(mut socket: WebSocket, target: SshTarget, _slot: ShellSlot) {
     let pty = match tokio::task::spawn_blocking(move || spawn_pty(&target)).await {
         Ok(Ok(p)) => p,
         _ => {
-            let _ = socket
-                .send(Message::Text(
-                    r#"{"type":"exit","error":"failed to start ssh"}"#.into(),
-                ))
-                .await;
+            send_bounded(
+                &mut socket,
+                Message::Text(r#"{"type":"exit","error":"failed to start ssh"}"#.into()),
+            )
+            .await;
             return;
         }
     };
@@ -231,7 +243,7 @@ async fn session(mut socket: WebSocket, target: SshTarget, _slot: ShellSlot) {
         tokio::select! {
             chunk = out_rx.recv() => match chunk {
                 Some(bytes) => {
-                    if socket.send(Message::Binary(bytes.into())).await.is_err() {
+                    if !send_bounded(&mut socket, Message::Binary(bytes.into())).await {
                         break;
                     }
                 }
@@ -243,8 +255,11 @@ async fn session(mut socket: WebSocket, target: SshTarget, _slot: ShellSlot) {
                     last_peer_activity = Instant::now();
                     match message {
                         Message::Binary(bytes) => {
-                            if in_tx.send(bytes.to_vec()).await.is_err() {
-                                break;
+                            // Bounded: if ssh stops draining its PTY for this
+                            // long, the session is hung and gets torn down.
+                            match tokio::time::timeout(DEAD_PEER, in_tx.send(bytes.to_vec())).await {
+                                Ok(Ok(())) => {}
+                                _ => break,
                             }
                         }
                         Message::Text(text) => {
@@ -268,7 +283,7 @@ async fn session(mut socket: WebSocket, target: SshTarget, _slot: ShellSlot) {
                 if last_peer_activity.elapsed() > DEAD_PEER {
                     break;
                 }
-                if socket.send(Message::Ping(Vec::new().into())).await.is_err() {
+                if !send_bounded(&mut socket, Message::Ping(Vec::new().into())).await {
                     break;
                 }
             }
@@ -277,20 +292,23 @@ async fn session(mut socket: WebSocket, target: SshTarget, _slot: ShellSlot) {
 
     drop(in_tx);
     let exit = child.try_wait().unwrap_or(None);
-    let notice = serde_json::json!({
-        "type": "exit",
-        "exited": exit.is_some(),
-        "exit_code": exit.as_ref().map(|s| s.exit_code()),
-    });
-    let _ = socket.send(Message::Text(notice.to_string().into())).await;
-    let _ = socket.send(Message::Close(None)).await;
-    // Kill this session's ssh only; the VM keeps running.
+    // Release the ssh process (this session's only; the VM keeps running)
+    // *before* the farewell frames, so a client that no longer reads cannot
+    // keep ssh alive or hold the shell slot while those sends time out.
     let _ = tokio::task::spawn_blocking(move || {
         let _ = child.kill();
         let _ = child.wait();
         drop(master);
     })
     .await;
+    let notice = serde_json::json!({
+        "type": "exit",
+        "exited": exit.is_some(),
+        "exit_code": exit.as_ref().map(|s| s.exit_code()),
+    });
+    if send_bounded(&mut socket, Message::Text(notice.to_string().into())).await {
+        send_bounded(&mut socket, Message::Close(None)).await;
+    }
 }
 
 #[cfg(test)]
