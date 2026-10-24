@@ -157,8 +157,12 @@ impl TartBackend for ProcessBackend {
                 });
             }
         }
-        let child = cmd.spawn().map_err(tart_err)?;
-        Ok(child.id())
+        let mut child = cmd.spawn().map_err(tart_err)?;
+        let pid = child.id();
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(pid)
     }
 
     fn stop(&self, name: &str) -> Result<()> {
