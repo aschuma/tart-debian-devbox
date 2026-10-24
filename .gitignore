@@ -4,3 +4,11 @@ bin
 
 # ansible-lint / ansible-galaxy install collections here
 .ansible/
+
+# Rust build products and Python test caches (Cargo.lock is committed)
+tctl/target/
+__pycache__/
+
+# Keep project scripts even when a developer's global ignore excludes Scripts
+!/scripts/
+!/scripts/*.sh

@@ -1,0 +1,13 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+  - $PROJECT/.env (not readable, skipped)
+  - $PROJECT/.env.local (not readable, skipped)
+==> Env layers (later override earlier):
+
+Effective environment
+  (empty)
+
+Secret-looking values are masked; use --show-secrets to reveal.

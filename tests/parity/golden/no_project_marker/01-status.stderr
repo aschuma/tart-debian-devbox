@@ -1,0 +1,3 @@
+[error] No '$PROJECT_CFG' found (searched from '$PROJECT' upward to '/').
+       Create one in the root of the project you want to manage:
+         cd <project-root> && $TOOL init

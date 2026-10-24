@@ -1,0 +1,7 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+==> Resolved 'demo' → 192.168.64.11
+==> Updated existing 'demo' entry → 192.168.64.11

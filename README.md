@@ -1,4 +1,4 @@
-> **New here?** Follow [QUICKSTART.md](QUICKSTART.md) — prerequisites, SSH key, building the template image, cloning it, `tart-ctl.sh init`, provisioning, SSH, start/stop. This README is the reference.
+> **New here?** Follow [QUICKSTART.md](QUICKSTART.md) — prerequisites, SSH key, building the template image, cloning it, `tctl init`, provisioning, SSH, start/stop. This README is the reference.
 
 # Packer + Tart + Ansible: Debian 12 Dev VM
 
@@ -25,7 +25,7 @@ This project includes content generated with the assistance of artificial intell
 ```
 ┌──────────────────────── host (macOS) ──────────────────────----──┐
 │  packer build ──► tart clone base ──► ansible-playbook ──► image │
-│  justfile / tart-ctl.sh            (paramiko, user admin)        │
+│  justfile / tctl                   (paramiko, user admin)        │
 └────────────────────────────────────────────────────────────----──┘
                                    │
 ┌──────────────────────── VM (Debian 12 arm64) ───────────────--─┐
@@ -193,7 +193,7 @@ Config files under `/mnt/shared` (the virtiofs host share) and `/home/devbox` ar
 
 ## Build the Template Image
 
-> The build produces a **template**: a clean, fully provisioned Tart image that you should not work in directly. Clone it once per project (`just clone <name>`, see [After the Build](#after-the-build-clone-your-image)) and drive the clones with `tart-ctl.sh`. Rebuilding the template never touches your clones.
+> The build produces a **template**: a clean, fully provisioned Tart image that you should not work in directly. Clone it once per project (`just clone <name>`, see [After the Build](#after-the-build-clone-your-image)) and drive the clones with `tctl`. Rebuilding the template never touches your clones.
 
 ```bash
 # 1. Prerequisites (macOS)
@@ -220,7 +220,7 @@ cd build && packer build -var-file=vars.pkrvars.hcl -var vm_name=debian-ssh-test
 
 ### Build-time configuration
 
-The build has its own configuration, independent of the `tart-ctl.sh` config in `~/.config/tctl/`.
+The build has its own configuration, independent of the `tctl` config in `~/.config/tctl/`.
 
 `build/build.env` — used by `provision.sh` and every `just` recipe:
 
@@ -280,20 +280,20 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 | Task                           | Command                                                                    |
 | ------------------------------ | -------------------------------------------------------------------------- |
 | Build template image           | `just build`                                                               |
-| Install `tart-ctl.sh`          | `just install` (script → `~/.local/bin`, config → `~/.config/tctl/`)      |
+| Install `tctl`                 | `just install` (binary → `~/.cargo/bin`, config → `~/.config/tctl/config.toml`) |
 | Clone template for a project   | `just clone my-project` (→ `tart clone debian-ssh my-project`)             |
-| Mark a project directory       | `tart-ctl.sh init` (writes `.tart-ctl-env`)                                |
-| Start / stop / status          | `tart-ctl.sh up`, `tart-ctl.sh down`, `tart-ctl.sh status`                 |
-| Push env files into the VM     | `tart-ctl.sh provision`                                                    |
-| Shell                          | `tart-ctl.sh ssh`                                                          |
-| Update `~/.ssh/config`         | `tart-ctl.sh update-ssh-config`                                            |
+| Mark a project directory       | `tctl init` (writes `.tart-ctl.toml`) |
+| Start / stop / status          | `tctl up`, `tctl down`, `tctl status` |
+| Push env files into the VM     | `tctl provision` |
+| Shell                          | `tctl ssh` |
+| Update `~/.ssh/config`         | `tctl update-ssh-config` |
 | List tools in the template VM  | `just tools` (→ `mise ls`; starts/stops the VM as needed)                  |
 | Upgrade tools in the template  | `just reprovision mise,runtimes,cli-tools` (then re-clone) or `mise upgrade` inside a VM |
 | Validate templates             | `just validate`                                                            |
 | Lint Ansible/YAML              | `just lint` (also runs in GitHub Actions)                                  |
 | Delete template image          | `just clean` (→ `tart delete`; clones are unaffected)                      |
 
-The `justfile` covers the **template image** — build, clone, maintenance (`build/provision.sh`, `ansible-playbook`, `tart clone`, `tart delete`); it reads its settings from `build/build.env` and every recipe can be run by hand. Day-to-day **VM control** of your clones (start/stop/provision/ssh) is the job of `tart-ctl.sh`, installed once with `just install`, configured in `~/.config/tctl/config`, and usable from any project directory (see [VM Instance Control](#vm-instance-control-tart-ctl)).
+The `justfile` covers the **template image** — build, clone, maintenance (`build/provision.sh`, `ansible-playbook`, `tart clone`, `tart delete`); it reads its settings from `build/build.env` and every recipe can be run by hand. Day-to-day **VM control** of your clones (start/stop/provision/ssh) is the job of `tctl`, installed once with `just install`, configured in `~/.config/tctl/config.toml`, and usable from any project directory (see [VM Instance Control](#vm-instance-control-tart-ctl)).
 
 ---
 
@@ -305,12 +305,12 @@ Once the Packer build completes you have a local Tart image named `debian-ssh` (
 just clone my-project            # → tart clone debian-ssh my-project
 ```
 
-Then point the project at the clone and start it with `tart-ctl.sh`:
+Then point the project at the clone and start it with `tctl`:
 
 ```bash
 cd ~/Projects/my-project
-tart-ctl.sh init                 # asks for the VM name (my-project) and the share directory → writes .tart-ctl-env
-tart-ctl.sh up
+tctl init                 # asks for VM name and share directory → writes .tart-ctl.toml
+tctl up
 ```
 
 When you later rebuild or reprovision the template, existing clones are not affected — delete a clone (`tart delete my-project`) and re-clone to pick up the changes.
@@ -319,117 +319,170 @@ When you later rebuild or reprovision the template, existing clones are not affe
 
 ## VM Instance Control (`tart-ctl`)
 
-The `bin_template/` folder contains a control script and configuration templates that simplify day-to-day VM management. This is the recommended way to start, stop, provision, and SSH into your VM.
+The command is now `tctl`; the section anchor is kept for existing links.
+
+The Rust crate in `tctl/` provides a synchronous VM-control library and the `tctl` CLI. It replaces the Bash controller; a frozen Bash reference is retained only under `tests/parity/reference/` for compatibility tests. No daemon is needed.
 
 ### Setup
 
-**1. Install the script and global config** — `tart-ctl.sh` is meant to live on your `$PATH` so it works from any project directory:
+**1. Install the CLI and global config** — requires a stable Rust toolchain, Tart ≥ 2.32, and SSH:
 
 ```bash
-just install                         # copies the script to ~/.local/bin and config_template/* to ~/.config/tctl/
+brew install rust just
+just install                         # cargo install --path tctl --locked + TOML defaults
+export PATH="$HOME/.cargo/bin:$PATH"
+tctl --help
 ```
 
-`TART_CTL_INSTALL_DIR` overrides the script's target directory; existing files in `~/.config/tctl/` are never overwritten. Or do it by hand:
+The binary is installed under the Cargo install root (`CARGO_INSTALL_ROOT`, else `CARGO_HOME`, else `~/.cargo`). A transitional `tart-ctl.sh` symlink is created alongside it (`TART_CTL_INSTALL_DIR` overrides the symlink directory). Existing TOML config is never overwritten. Use `tctl` explicitly if an old Bash copy remains earlier on PATH. The CLI rejects old shell configs with a migration hint rather than executing them.
 
-```bash
-mv bin_template/tart-ctl.sh ~/.local/bin/tart-ctl.sh && chmod +x ~/.local/bin/tart-ctl.sh
-mkdir -p ~/.config/tctl && cp config_template/* ~/.config/tctl/
-```
+Tags matching `tctl-v*` trigger an Apple Silicon release archive (`tctl-aarch64-apple-darwin.tar.gz`) and SHA-256 checksum. The workflow is configured but has not yet been run; binaries are not signed/notarised.
 
-**2. Mark your project** — in the root of the Git repository you want to work on inside the VM, run `init`. It asks for the VM to manage (warns if no such Tart VM exists yet — clone one with `just clone <name>`) and how to share the project directory, then writes `.tart-ctl-env`:
+**2. Mark your project** — `init` asks for missing flags only when stdin is a terminal. It warns if the VM is not a local clone yet:
 
 ```bash
 cd ~/Projects/my-project
-tart-ctl.sh init                     # → .tart-ctl-env with TCTL_VM_NAME and TCTL_HOST_SHARE_DIR
-echo 'MY_VAR=value' > .env           # optional: env vars to push into the VM with `provision`
+tctl init                          # interactive
+# Or script it: tctl init --vm my-project --share auto
+echo 'MY_VAR=value' > .env          # optional: env vars pushed by provision
 ```
 
-The file is plain shell; edit it any time (commented template: `bin_template/.tart-ctl-env`). `TCTL_VM_NAME` is **required** here — the global config deliberately has no VM name, so every project states which VM it uses.
+This writes `.tart-ctl.toml` and registers the VM. Existing files require `--force` or interactive confirmation. `[vm].name` is **required in the project file**; global defaults never select a VM.
 
 ### Configuration
 
-Settings are layered — the project file overrides the global one:
+Settings are layered **per key**, not per section: project values override global defaults. Lists are replaced, not appended; `[]` explicitly disables an inherited list.
 
-| File                      | Purpose                                                                                                     |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `~/.config/tctl/config`   | Global defaults for all projects: `TCTL_SSH_USER`, `TCTL_SSH_CONFIG`, `TCTL_IDENTITY_FILE`, `TCTL_REMOTE_FORWARD`, `TCTL_LOCAL_FORWARD`, `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` (template: `config_template/config`; honours `XDG_CONFIG_HOME`) |
-| `<project>/.tart-ctl-env` | Project marker, created by `tart-ctl.sh init`: **`TCTL_VM_NAME` (required)** plus per-project overrides such as `TCTL_HOST_SHARE_DIR`, `TCTL_ENV_PROVISION_FILES` or `TCTL_LOCAL_FORWARD` |
+| File | Purpose |
+| --- | --- |
+| `~/.config/tctl/config.toml` | Global defaults (template: `config_template/config.toml`; honours `XDG_CONFIG_HOME`) |
+| `<project>/.tart-ctl.toml` | Project marker, found by walking upward; must set `[vm].name` |
 
-| Variable                   | Description                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------ |
-| `TCTL_VM_NAME`             | Name of the Tart VM to manage — **required in `.tart-ctl-env`**, normally a clone of the template (`just clone <name>`). `tart-ctl.sh` refuses to run if it is missing |
-| `TCTL_HOST_SHARE_DIR`      | Host directory shared with the VM at `/mnt/shared/workspace`. `auto` (the default) shares the directory containing `.tart-ctl-env`; a path shares that directory; unset or `""` starts the VM without a share |
-| `TCTL_ENV_PROVISION_FILES` | Comma-separated env files pushed by `provision`, layered in order (default `.env`). Relative entries resolve against the project root; absolute and `~/` paths are used as-is; unreadable entries are skipped |
-| `TCTL_SSH_USER`            | SSH user inside the VM — `devbox` for images built from this repo; **keep unchanged**            |
-| `TCTL_SSH_CONFIG`          | SSH client config that `update-ssh-config` maintains (`~/.ssh/config`)                           |
-| `TCTL_IDENTITY_FILE`       | Path to your SSH private key — **keep unchanged**; also used during image creation               |
-| `TCTL_REMOTE_FORWARD`      | Optional comma-separated `PORT HOST:PORT` specs written as `RemoteForward` (VM → host) into the VM's `~/.ssh/config` entry (default `"1080 127.0.0.1:1080"`, a SOCKS proxy from the Mac; `""` disables) |
-| `TCTL_LOCAL_FORWARD`       | Optional comma-separated `PORT HOST:PORT` specs written as `LocalForward` (host → VM) into the VM's `~/.ssh/config` entry (default `""`), e.g. `"5432 127.0.0.1:5432,15672 127.0.0.1:15672"` (PostgreSQL + RabbitMQ UI) |
+| TOML key | Description |
+| --- | --- |
+| `[vm].name` | Local Tart VM name (letters, digits, `.`, `_`, `-`; no leading `-`, `.` or `..` names) |
+| `[share].dir` | `"auto"` shares the project root at `/mnt/shared/workspace`; `"none"` disables sharing; otherwise a host path |
+| `[provision].env_files` | Ordered array of env files, default `[".env"]`; later keys win, unreadable files are skipped |
+| `[ssh].user` | SSH user, normally `"devbox"` |
+| `[ssh].config_path` | SSH client config maintained by `update-ssh-config`, normally `"~/.ssh/config"` |
+| `[ssh].identity_file` | Private key matching the public key injected during the Packer build |
+| `[ssh].remote_forward` | Array of `"PORT HOST:PORT"` RemoteForward entries (VM → host); template default `["1080 127.0.0.1:1080"]` |
+| `[ssh].local_forward` | Array of LocalForward entries (host → VM); template default `[]` |
 
-The share directory is resolved in this order: a value in `.tart-ctl-env` wins; otherwise the global value applies, where `auto` resolves to the project root (the directory holding `.tart-ctl-env`); if neither is set, nothing is mounted.
+Relative paths resolve from the project root, not the invoking subdirectory. `~`, `$HOME` and `${HOME}` expand in path values; arbitrary shell is never evaluated.
 
-```bash
-# ~/Projects/my-project/.tart-ctl-env (as written by `tart-ctl.sh init`; everything else comes from ~/.config/tctl/config)
-TCTL_VM_NAME="my-project"                                # the cloned VM for this project (required)
-TCTL_HOST_SHARE_DIR="auto"                               # share this directory; or a path, or "" for no share
-# TCTL_ENV_PROVISION_FILES=".env,.env.local"             # push a personal overrides file on top of .env
-# TCTL_LOCAL_FORWARD="5432 127.0.0.1:5432,15672 127.0.0.1:15672"  # reach VM-local Postgres / RabbitMQ UI from the Mac via `ssh my-project`
+```toml
+# ~/Projects/my-project/.tart-ctl.toml
+[vm]
+name = "my-project"
+[share]
+dir = "auto"
+[provision]
+env_files = [".env", ".env.local"]
+[ssh]
+local_forward = ["5432 127.0.0.1:5432", "15672 127.0.0.1:15672"]
 ```
 
-**Port forwards** are plain ssh `RemoteForward`/`LocalForward` entries that `update-ssh-config` keeps in the VM's `Host` block (it replaces the previously managed lines, so removing an entry from the config removes it from `~/.ssh/config` on the next run). They are active for the lifetime of an `ssh my-project` session (or `tart-ctl.sh ssh`); use `ssh -N my-project` for a tunnel-only connection. Note that services inside the VM bound to `0.0.0.0` — Docker's `-p` publishes this way by default — are reachable directly at `http://$(tart-ctl.sh ip):PORT` without any forward; `TCTL_LOCAL_FORWARD` is for services that only listen on the VM's loopback.
+**Port forwards** are plain ssh `RemoteForward`/`LocalForward` entries that `update-ssh-config` keeps in the VM's `Host` block (it replaces the previously managed lines, so removing an entry from the config removes it from `~/.ssh/config` on the next run). They are active for the lifetime of an `ssh my-project` session (or `tctl ssh`); use `ssh -N my-project` for a tunnel-only connection. Note that services inside the VM bound to `0.0.0.0` — Docker's `-p` publishes this way by default — are reachable directly at `http://$(tctl --quiet ip):PORT` without any forward; `[ssh].local_forward` is for services that only listen on the VM's loopback.
 
-> **`TCTL_IDENTITY_FILE`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`, private half in `BUILD_IDENTITY_FILE` of `build/build.env`). Changing it here without rebuilding the image will break SSH access.
+> **`[ssh].identity_file`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`, private half in `BUILD_IDENTITY_FILE` of `build/build.env`). Changing it here without rebuilding the image will break SSH access.
 
-The files listed in **`TCTL_ENV_PROVISION_FILES`** (plain `KEY=VALUE` pairs; by default just `.env` next to `.tart-ctl-env`) are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: later files override only the keys they define and do not need to repeat the rest — e.g. `".env,.env.local"` for committed defaults plus gitignored personal overrides, or `"~/.config/tctl/common.env,.env"` for host-wide variables shared by every project.
+The files listed in **`[provision].env_files`** (plain `KEY=VALUE` pairs; by default just `.env` next to `.tart-ctl.toml`) are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: later files override only the keys they define and do not need to repeat the rest — e.g. `[".env", ".env.local"]` for committed defaults plus gitignored personal overrides, or `["~/.config/tctl/common.env", ".env"]` for host-wide variables shared by every project.
 
 Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read.
 
 ### Usage
 
-`tart-ctl.sh` loads `~/.config/tctl/config`, then walks up from the current directory to the filesystem root until it finds `.tart-ctl-env`, and sources that on top. You can run it from any subdirectory of your project. If no marker is found, or it lacks `TCTL_VM_NAME`, the script stops with a hint to run `tart-ctl.sh init`.
+`tctl` loads `~/.config/tctl/config.toml`, then walks upward for `.tart-ctl.toml`. It works from any project subdirectory and stops with a clear error for a missing marker, missing VM name, invalid TOML, or legacy-only config. Use `tctl init` to create a new marker.
 
 | Command                         | Aliases | Description                                     |
 | ------------------------------- | ------- | ----------------------------------------------- |
-| `tart-ctl.sh init`              |         | Create `.tart-ctl-env` in the current directory (asks for VM name and share directory) |
-| `tart-ctl.sh start`             | `up`    | Start the VM (with host share if configured)    |
-| `tart-ctl.sh stop`              | `down`  | Stop the running VM                             |
-| `tart-ctl.sh status`            | `st`    | Show whether the VM is running or stopped       |
-| `tart-ctl.sh provision`         | `pr`    | Push the project env files into the VM's `/etc/profile.d/` |
-| `tart-ctl.sh env [--diff]`      |         | Show the effective env; `--diff` compares with VM |
-| `tart-ctl.sh ssh`               | `sh`    | Open an interactive SSH shell in the VM         |
-| `tart-ctl.sh ip`                |         | Print the VM's current IP address               |
-| `tart-ctl.sh update-ssh-config` | `usc`   | Update `~/.ssh/config` with the VM's current IP |
+| `tctl init`                    |         | Create `.tart-ctl.toml`; interactive or `--vm NAME --share auto\|none\|PATH` |
+| `tctl start`                   | `up`    | Detach with logs; wait up to 60 s for IP (`--wait SECONDS`, 0 skips waiting) |
+| `tctl stop`                    | `down`  | Stop the running VM, even when it has no IP |
+| `tctl status`                  | `st`    | Show VM state and current IP |
+| `tctl provision`               | `pr`    | Push env layers into `/etc/profile.d/tart-provision.sh` |
+| `tctl env [--diff]`             |         | Preview env; diff exits 1 on drift, secrets masked by default |
+| `tctl ssh [-- CMD…]`            | `sh`    | Exec SSH, preserving terminal, signals and exit code |
+| `tctl ip`                      |         | Print the current IP (`--quiet ip` suppresses config preamble) |
+| `tctl update-ssh-config`        | `usc`   | Update the managed SSH Host block |
+| `tctl registry list\|show NAME\|scan DIR` | | Inspect/rebuild the per-user SQLite inventory |
+| `tctl server [--port 7878] [--allow-origin ORIGIN]` | | Local HTTP/WebSocket control server (see below) |
+
+Global flags: `--json`, `--no-color`, `-v`/`-vv`, `-q`/`--quiet`; `NO_COLOR` is honoured. JSON commands use `{ "ok": true, "result": …, "messages": … }`; errors use `{ "ok": false, "error": … }`. SSH exec is the exception: its output and exit code belong to SSH, not a JSON wrapper.
+
+VM logs and the derived registry live under `~/.local/share/tctl/` (`XDG_DATA_HOME` is honoured). Startup records the PID/log before waiting, including on timeout. The registry stores only a SHA-256 environment hash, never environment values. Rebuild it with `tctl registry scan ~/Projects`.
+
+### HTTP control server (`tctl server`)
+
+`tctl server` runs a foreground HTTP/WebSocket API over the same core as the CLI.
+
+**Security model (deliberate, decided at design time):** the listener binds to `127.0.0.1` only and has **no authentication** — any process on your machine can start, stop, provision and open shells in your VMs while it runs. Reach it from other machines through an SSH tunnel. Browser pages can only call it when their exact `Origin` was allowlisted at startup (those origins get the matching CORS response headers); every request must carry a local `Host` header (DNS-rebinding guard). There is no option to bind to other interfaces.
+
+```bash
+tctl server                                        # http://127.0.0.1:7878
+tctl server --port 0                               # ephemeral port, printed at startup
+tctl server --allow-origin http://localhost:5173   # exact origins only; repeatable
+```
+
+Only VMs in the registry are addressable — run `tctl init` or `tctl registry scan` first. Responses use the CLI's JSON envelope (`{"ok":true,"result":…,"messages":…}` / `{"ok":false,"error":…}`).
+
+| Endpoint | Behaviour |
+| --- | --- |
+| `GET /vms` | Registered VMs with live state and IP |
+| `GET /vms/{name}` | One VM's state, IP, project and provision metadata |
+| `GET /vms/{name}/env` | Masked environment preview — the server has **no** secret-reveal path |
+| `POST /vms/{name}/start\|stop\|provision` | `202 Accepted` + job; one mutating job per VM, otherwise `409` |
+| `GET /jobs/{id}` | Job progress: `running` → `done` (with the CLI's report) or `failed` |
+| `GET /vms/{name}/shell` | WebSocket terminal into a **running** VM (`409` if stopped) |
+
+Jobs live in server memory; restarting the server forgets job history but never stops VMs.
+
+**Shell protocol** (xterm.js-friendly): binary frames carry raw terminal bytes both ways; text frames carry JSON control messages — the client may send `{"type":"resize","cols":120,"rows":40}`, the server sends `{"type":"exit",…}` before closing. Each session runs `ssh` under a real PTY, so prompts, Ctrl-C and full-screen programs work. Limits: 4 shells per VM, 16 total (`429` beyond that), 64 KiB per client frame. Server pings detect dead peers; idle sessions are never logged out. Closing the socket kills that session's `ssh` only — the VM keeps running (use `tmux` inside the VM to survive disconnects). Terminal traffic is raw and unmasked, and is never written to server logs.
 
 **Common workflow:**
 
 ```bash
 cd ~/Projects/my-project   # or any subdirectory
 
-tart-ctl.sh up             # start the VM
-tart-ctl.sh provision      # push the env files into the VM
-tart-ctl.sh ssh            # open a shell inside the VM
+tctl up                   # start the VM
+tctl provision            # push the env files into the VM
+tctl ssh                  # open a shell inside the VM
 
-tart-ctl.sh down           # shut down when done
+tctl down                 # shut down when done
 ```
 
 ### What `provision` Does
 
-The `provision` command reads the files listed in `TCTL_ENV_PROVISION_FILES` in order (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
+The `provision` command reads the files listed in `[provision].env_files` in order (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
-To inspect the result **before** pushing, use `tart-ctl.sh env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tart-ctl.sh env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
+To inspect the result **before** pushing, use `tctl env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tctl env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
 
 ```bash
-tart-ctl.sh env            # what would be pushed, and from which file
-tart-ctl.sh env --diff     # is the VM up to date?
+tctl env                  # what would be pushed, and from which file
+tctl env --diff           # is the VM up to date?
 ```
 
-The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tart-ctl.sh up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
+The host share needs no provisioning step: the image has an `/etc/fstab` entry (`com.apple.virtio-fs.automount /mnt/shared virtiofs noauto,x-systemd.automount,nofail`), so a share passed at `tctl up` is mounted by systemd on first access of `/mnt/shared`. Without a share the VM boots cleanly; accessing `/mnt/shared` then just reports `No such device`.
 
 ---
 
+## Testing the controller
+
+```bash
+just test                         # Rust format/lint/tests, migration checks, both parity runs
+just parity                       # frozen Bash reference against goldens
+just parity --impl tctl/target/debug/tctl --format toml
+just smoke ~/Projects/my-project  # explicit real-VM smoke test; requires an existing clone
+```
+
+The parity runner uses isolated HOME/project directories and fake `tart`/`ssh`; it compares stdout, exit codes, mutating commands, SSH argv, generated files and final VM state. Only documented differences (config filenames/keys, read-only query counts/formats, clap diagnostics, the added start IP) are normalised. Goldens are recorded from Bash, never from Rust. Bash ≥ 4 and Python 3 are required for parity (`brew install bash`); converter tests require Python ≥ 3.11.
+
+The manual smoke test updates the project's managed SSH block, checks SSH and previews masked env. It does not provision, clone or delete anything, and stops the VM only if it started it. It is not part of `just test` or CI.
+
 ## Using the VM
 
-Once the VM is running and provisioned (`tart-ctl.sh up && tart-ctl.sh provision`), connect with `tart-ctl.sh ssh`. A few things to be aware of on first use:
+Once the VM is running and provisioned (`tctl up && tctl provision`), connect with `tctl ssh`. A few things to be aware of on first use:
 
 ### Shell, Prompt & Non-Interactive Commands
 
@@ -438,7 +491,7 @@ Once the VM is running and provisioned (`tart-ctl.sh up && tart-ctl.sh provision
 | File                                     | Purpose                                                                                                                                                                  |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `~/.zshenv`                              | Read by _every_ zsh — puts the mise **shims** on `PATH`, so `ssh debian-ssh 'java --version'` just works                                                                 |
-| `/etc/zsh/zprofile`                      | Login shells — sources `/etc/profile`, so `/etc/profile.d/*.sh` (incl. `tart-provision.sh` from `tart-ctl.sh provision`) applies to zsh as well                          |
+| `/etc/zsh/zprofile`                      | Login shells — sources `/etc/profile`, so `/etc/profile.d/*.sh` (incl. `tart-provision.sh` from `tctl provision`) applies to zsh as well                          |
 | `~/.zshrc`                               | Interactive shells — `compinit`, full `mise activate zsh` (per-directory tool switching, `JAVA_HOME`), `starship init zsh`, aliases; sources `~/.zshrc.local` if present |
 | `~/.config/starship.toml`                | Prompt layout (OS · path · git · venv · java · node · docker │ memory · duration · time) — copied from `roles/shell/files/starship.toml`                                 |
 | `/usr/local/share/zsh/site-functions/_*` | Generated zsh completions for mise, gh, docker, uv, ruff, starship                                                                                                       |
@@ -463,10 +516,10 @@ IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore 
 
 ### Option 1: SSH Gateway (Recommended)
 
-1. Run `tart-ctl.sh update-ssh-config` to write the current VM IP into `~/.ssh/config`
+1. Run `tctl update-ssh-config` to write the current VM IP into `~/.ssh/config`
 2. **IntelliJ IDEA** → **File** → **Remote Development** → **SSH**
 3. **New Connection**:
-   - Host: VM name from `TCTL_VM_NAME` (resolved via `~/.ssh/config`)
+   - Host: VM name from `[vm].name` (resolved via `~/.ssh/config`)
    - Port: `22`
    - User: `devbox`
    - Authentication: **Key Pair**
@@ -483,18 +536,18 @@ IDEs (IntelliJ Gateway, VS Code Remote) connect via a login shell and therefore 
 
 ### Option 2: Mount Project via Tart Share
 
-With the default `TCTL_HOST_SHARE_DIR="auto"` the project root (the directory holding `.tart-ctl-env`) is shared automatically; set an explicit path in `.tart-ctl-env` to share something else. Then:
+With `[share].dir = "auto"` the project root (the directory holding `.tart-ctl.toml`) is shared automatically; set an explicit path there to share something else. Then:
 
 ```bash
-tart-ctl.sh up          # starts VM with the host share attached (auto-mounted)
-tart-ctl.sh ssh         # open a shell — project files are at /mnt/shared/workspace/
+tctl up                # starts VM with the host share attached (auto-mounted)
+tctl ssh               # open a shell — project files are at /mnt/shared/workspace/
 ```
 
 Then configure IntelliJ to use remote SDK:
 
-1. Run `tart-ctl.sh update-ssh-config` so the VM name resolves in `~/.ssh/config`
+1. Run `tctl update-ssh-config` so the VM name resolves in `~/.ssh/config`
 2. **File** → **Project Structure** → **SDKs** → **+** → **Add SSH SDK**
-3. Configure SSH using the VM name from `TCTL_VM_NAME`, user `devbox`
+3. Configure SSH using the VM name from `[vm].name`, user `devbox`
 4. Point to the JDK path reported by `mise where java` on the VM
 
 **Benefits**:
@@ -588,7 +641,7 @@ ls -la /mnt/shared/workspace/
 
 **Common issues**:
 
-- **VM not started with a share**: `tart-ctl.sh start` only passes `--dir` when the resolved `TCTL_HOST_SHARE_DIR` is non-empty (`auto` → project root, or an explicit path from `.tart-ctl-env` / `~/.config/tctl/config`). `tart-ctl.sh status` shows the resolved `Share` path; verify it exists on the host.
+- **VM not started with a share**: `tctl start` passes `--dir` only when `[share].dir` resolves to a directory (`auto` → project root, or an explicit path). `none` disables it. `tctl status` shows the resolved `Share` path; verify it exists on the host.
 - **Wrong mount tag**: Tart uses a single fixed tag `com.apple.virtio-fs.automount` for all shares — do not use the share name as the mount device.
 - **`dmesg` shows `tag <name> not found`**: Confirms the wrong tag is being used — switch to `com.apple.virtio-fs.automount`.
 
@@ -620,11 +673,14 @@ ls -la /mnt/shared/workspace/
 │           ├── cli_tools/          # mise install of CLI tools + verify commands
 │           ├── shell/              # zsh login shell, zshenv/zshrc templates, starship.toml, completions
 │           └── verify/             # final verification gate
-├── bin_template/                   # VM instance control
-│   ├── tart-ctl.sh                 # Control script — install to $PATH (`just install`)
-│   └── .tart-ctl-env               # Project marker template (what `tart-ctl.sh init` generates: VM name, share dir, env files)
-├── config_template/                # Copied to ~/.config/tctl/ by `just install`
-│   └── config                      # Global tart-ctl defaults (SSH user/key, remote forward, share mode, env files — no VM name)
+├── tctl/                           # Rust VM-control library + CLI, Cargo.lock committed
+│   ├── src/                        # config, backend, envfile, SSH config, registry, operations, CLI
+│   └── tests/                      # lifecycle and sandboxed CLI integration tests
+├── tests/parity/                   # Bash reference + fake tart/ssh + golden scenarios
+├── scripts/smoke-tctl.sh            # Explicit manual real-VM check (never provisions env)
+├── docs/rust-migration.md           # Design decisions and implementation checkpoint
+├── config_template/                # Copied to ~/.config/tctl/ by just install (never overwritten)
+│   └── config.toml                 # Global defaults; VM names belong to project markers
 ├── QUICKSTART.md                   # Step-by-step first-time setup
 └── README.md
 ```

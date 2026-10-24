@@ -1,0 +1,14 @@
+Host other
+    HostName 10.0.0.1
+    User someone
+
+Host demo
+    HostName 192.168.64.12
+    User devbox
+    IdentityFile $HOME/.ssh/id_ed25519_tart
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+Host trailing
+    HostName 10.0.0.2

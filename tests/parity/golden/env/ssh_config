@@ -1,0 +1,9 @@
+
+Host demo
+    HostName 192.168.64.10
+    User devbox
+    IdentityFile $HOME/.ssh/id_ed25519_tart
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    RemoteForward 1080 127.0.0.1:1080

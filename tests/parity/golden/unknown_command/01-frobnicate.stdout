@@ -1,0 +1,6 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+Run '$TOOL help' for commands or '$TOOL help-config' for config details.

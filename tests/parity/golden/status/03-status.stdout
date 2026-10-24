@@ -1,0 +1,11 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+Status: demo
+  State : running
+  IP    : 192.168.64.42
+  Global : $HOME/.config/tctl/$GLOBAL_CFG
+  Project: $PROJECT/$PROJECT_CFG
+  Share  : $PROJECT

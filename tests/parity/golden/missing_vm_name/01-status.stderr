@@ -1,0 +1,3 @@
+[error] 'TCTL_VM_NAME' is not set in '$PROJECT/$PROJECT_CFG'.
+       Each project names its own VM there, e.g.  TCTL_VM_NAME="my-project"
+       Or regenerate the file interactively:   cd '$PROJECT' && $TOOL init

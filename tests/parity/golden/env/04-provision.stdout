@@ -1,0 +1,9 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+==> Pushing 2 env layer(s) → devbox@demo:/etc/profile.d/tart-provision.sh
+  + $PROJECT/.env
+  + $PROJECT/.env.local
+==> Done. Open a new login shell in the VM to pick up the variables.

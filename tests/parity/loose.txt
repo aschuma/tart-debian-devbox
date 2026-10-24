@@ -1,0 +1,11 @@
+# scenario/file — outputs whose wording is implementation-specific (not compared).
+# Exit codes and all other files of the same step remain strict.
+missing_vm_name/01-status.stderr
+no_project_marker/01-status.stderr
+no_global_config/01-status.stderr
+# clap rejects bad flags before loading config; bash printed the config first.
+env/07-env.stderr
+env/07-env.stdout
+env/08-env.stderr
+unknown_command/01-frobnicate.stderr
+unknown_command/01-frobnicate.stdout

@@ -1,0 +1,7 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : (none)
+
+==> Starting VM 'demo' …
+==> VM 'demo' started (background PID N).

@@ -33,8 +33,8 @@ cat <<MSG
     It is meant as a read-only baseline — clone it for each project instead of working in it:
 
       just clone my-project            # → tart clone ${BUILD_VM_NAME} my-project
-      cd ~/Projects/my-project && tart-ctl.sh init    # writes .tart-ctl-env (VM name, share dir)
-      tart-ctl.sh up
+      cd ~/Projects/my-project && tctl init    # writes .tart-ctl.toml (VM name, share dir)
+      tctl up
 
     Full walkthrough: QUICKSTART.md
 

@@ -1,0 +1,10 @@
+Global : $HOME/.config/tctl/$GLOBAL_CFG
+Project: $PROJECT/$PROJECT_CFG
+VM     : demo
+Share  : $PROJECT
+
+==> Refreshing SSH config entry for 'demo' …
+==> Resolved 'demo' → 192.168.64.10
+==> Added new 'demo' entry → 192.168.64.10
+==> Connecting to 'demo' (192.168.64.10) …
+[fake ssh] interactive session
