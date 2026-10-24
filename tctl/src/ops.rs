@@ -284,13 +284,19 @@ fn write_ssh_config(ctx: &mut Ctx, ssh: &SshSettings, ip: &str) -> Result<SshCon
     })
 }
 
-/// Makes sure the Host block exists with the current IP and user.
+/// Makes sure the Host block exists with the current IP, user and identity file.
 fn ensure_ssh_config_current(ctx: &mut Ctx, ssh: &SshSettings, ip: &str) -> Result<()> {
     let text = std::fs::read_to_string(&ssh.config).unwrap_or_default();
-    let fresh = sshconfig::has_block(&text, &ctx.cfg.vm_name) && {
-        let (host, user) = sshconfig::current_values(&text, &ctx.cfg.vm_name);
-        host.as_deref() == Some(ip) && user.as_deref() == Some(ssh.user.as_str())
+    let block = HostBlock {
+        host: &ctx.cfg.vm_name,
+        ip,
+        user: &ssh.user,
+        identity_file: &ssh.identity_file,
+        remote_forward: &ctx.cfg.remote_forward,
+        local_forward: &ctx.cfg.local_forward,
     };
+    let fresh = sshconfig::has_block(&text, &ctx.cfg.vm_name)
+        && sshconfig::current_values(&text, &ctx.cfg.vm_name).matches(&block);
     if !fresh {
         ctx.reporter.info(&format!(
             "Refreshing SSH config entry for '{}' …",

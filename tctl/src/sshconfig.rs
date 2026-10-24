@@ -33,20 +33,14 @@ impl HostBlock<'_> {
         lines
     }
 
+    /// The `IdentityFile` argument, quoted when the path needs it.
+    fn identity_arg(&self) -> String {
+        quote_arg(&self.identity_file.display().to_string())
+    }
+
     /// A complete new block, preceded by an empty line.
     pub fn render_new(&self) -> String {
-        let identity = self.identity_file.display().to_string();
-        let identity = if identity
-            .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '"' | '\\'))
-        {
-            format!(
-                "\"{}\"",
-                identity.replace('\\', "\\\\").replace('"', "\\\"")
-            )
-        } else {
-            identity
-        };
+        let identity = self.identity_arg();
         let mut s = format!(
             "\nHost {}\n    HostName {}\n    User {}\n    IdentityFile {}\n    IdentitiesOnly yes\n    StrictHostKeyChecking no\n    UserKnownHostsFile /dev/null\n",
             self.host,
@@ -59,6 +53,44 @@ impl HostBlock<'_> {
             s.push('\n');
         }
         s
+    }
+}
+
+/// Quotes an argument for ssh_config when it contains whitespace, quotes or
+/// backslashes; otherwise returns it unchanged. Inverse of [`first_arg`].
+fn quote_arg(value: &str) -> String {
+    if value
+        .chars()
+        .any(|c| c.is_whitespace() || matches!(c, '"' | '\\'))
+    {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    } else {
+        value.to_string()
+    }
+}
+
+/// The first argument of a directive, with OpenSSH double-quoting and
+/// backslash escapes removed.
+fn first_arg(rest: &str) -> String {
+    let rest = rest.trim_start();
+    let mut chars = rest.chars();
+    if rest.starts_with('"') {
+        chars.next();
+        let mut out = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => {
+                    if let Some(next) = chars.next() {
+                        out.push(next);
+                    }
+                }
+                '"' => break,
+                c => out.push(c),
+            }
+        }
+        out
+    } else {
+        rest.split_whitespace().next().unwrap_or("").to_string()
     }
 }
 
@@ -112,11 +144,29 @@ pub fn has_block(text: &str, host: &str) -> bool {
     text.lines().any(|l| starts_block(l, host))
 }
 
-/// Current `HostName` and `User` of the block, if present.
-pub fn current_values(text: &str, host: &str) -> (Option<String>, Option<String>) {
+/// The values `tctl` maintains in the managed block, as currently on disk.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct BlockValues {
+    pub hostname: Option<String>,
+    pub user: Option<String>,
+    pub identity_file: Option<String>,
+}
+
+impl BlockValues {
+    /// True if the block already carries exactly these values.
+    pub fn matches(&self, block: &HostBlock<'_>) -> bool {
+        let identity = block.identity_file.display().to_string();
+        self.hostname.as_deref() == Some(block.ip)
+            && self.user.as_deref() == Some(block.user)
+            && self.identity_file.as_deref() == Some(identity.as_str())
+    }
+}
+
+/// Current `HostName`, `User` and `IdentityFile` of the block (first
+/// occurrence each, like ssh itself), if present.
+pub fn current_values(text: &str, host: &str) -> BlockValues {
     let mut in_block = false;
-    let mut hostname = None;
-    let mut user = None;
+    let mut values = BlockValues::default();
     for line in text.lines() {
         if section_start(line).is_some() {
             in_block = starts_block(line, host);
@@ -125,22 +175,23 @@ pub fn current_values(text: &str, host: &str) -> (Option<String>, Option<String>
         if !in_block {
             continue;
         }
-        if hostname.is_none() {
-            if let Some(v) = argument(line, "HostName") {
-                hostname = Some(v.split_whitespace().next().unwrap_or("").to_string());
-            }
-        }
-        if user.is_none() {
-            if let Some(v) = argument(line, "User") {
-                user = Some(v.split_whitespace().next().unwrap_or("").to_string());
+        for (keyword, slot) in [
+            ("HostName", &mut values.hostname),
+            ("User", &mut values.user),
+            ("IdentityFile", &mut values.identity_file),
+        ] {
+            if slot.is_none() {
+                if let Some(rest) = argument(line, keyword) {
+                    *slot = Some(first_arg(rest));
+                }
             }
         }
     }
-    (hostname, user)
+    values
 }
 
 /// Returns the updated config text: the block for `block.host` gets the new
-/// HostName/User and its forward lines replaced by the configured set (emitted
+/// HostName/User/IdentityFile and its forward lines replaced by the configured set (emitted
 /// where the first old forward was, or at the end of the block). If the block
 /// does not exist it is appended.
 pub fn upsert_block(text: &str, block: &HostBlock) -> String {
@@ -184,6 +235,10 @@ pub fn upsert_block(text: &str, block: &HostBlock) -> String {
             }
             if argument(line, "User").is_some() {
                 out.push(replace_after(line, "User", block.user));
+                continue;
+            }
+            if argument(line, "IdentityFile").is_some() {
+                out.push(replace_after(line, "IdentityFile", &block.identity_arg()));
                 continue;
             }
         }
@@ -265,14 +320,40 @@ mod tests {
         ));
         let s3 = upsert_block(&s2, &block("1.2.3.5", &[], &[], &id));
         assert!(!s3.contains("Forward"));
-        assert_eq!(
-            current_values(&s3, "demo"),
-            (Some("1.2.3.5".into()), Some("devbox".into()))
+        let demo = current_values(&s3, "demo");
+        assert_eq!(demo.hostname.as_deref(), Some("1.2.3.5"));
+        assert_eq!(demo.user.as_deref(), Some("devbox"));
+        assert_eq!(demo.identity_file.as_deref(), Some("/h/.ssh/key"));
+        assert!(demo.matches(&block("1.2.3.5", &[], &[], &id)));
+        let other = current_values(&s3, "other");
+        assert_eq!(other.hostname.as_deref(), Some("10.0.0.1"));
+        assert_eq!(other.user.as_deref(), Some("someone"));
+        assert_eq!(other.identity_file, None);
+    }
+
+    #[test]
+    fn identity_file_is_updated_in_place_and_quoted_when_needed() {
+        let plain = PathBuf::from("/h/.ssh/key");
+        let spaced = PathBuf::from("/h/my keys/id \"quoted\"");
+        let s1 = upsert_block("", &block("1.1.1.1", &[], &[], &plain));
+        assert!(s1.contains("    IdentityFile /h/.ssh/key\n"));
+
+        let s2 = upsert_block(&s1, &block("1.1.1.1", &[], &[], &spaced));
+        assert!(
+            s2.contains("    IdentityFile \"/h/my keys/id \\\"quoted\\\"\"\n"),
+            "{s2}"
         );
+        assert_eq!(s2.matches("IdentityFile").count(), 1, "{s2}");
+        let values = current_values(&s2, "demo");
         assert_eq!(
-            current_values(&s3, "other"),
-            (Some("10.0.0.1".into()), Some("someone".into()))
+            values.identity_file.as_deref(),
+            Some("/h/my keys/id \"quoted\"")
         );
+        assert!(values.matches(&block("1.1.1.1", &[], &[], &spaced)));
+        assert!(!values.matches(&block("1.1.1.1", &[], &[], &plain)));
+
+        let s3 = upsert_block(&s2, &block("1.1.1.1", &[], &[], &plain));
+        assert!(s3.contains("    IdentityFile /h/.ssh/key\n"), "{s3}");
     }
 
     #[test]
@@ -304,14 +385,12 @@ mod tests {
                 "Host=third\n    User third\n",
             )
         );
-        assert_eq!(
-            current_values(&out, "demo"),
-            (Some("5.5.5.5".into()), Some("devbox".into()))
-        );
-        assert_eq!(
-            current_values(&out, "other"),
-            (Some("9.9.9.9".into()), None)
-        );
+        let demo = current_values(&out, "demo");
+        assert_eq!(demo.hostname.as_deref(), Some("5.5.5.5"));
+        assert_eq!(demo.user.as_deref(), Some("devbox"));
+        let other = current_values(&out, "other");
+        assert_eq!(other.hostname.as_deref(), Some("9.9.9.9"));
+        assert_eq!(other.user, None);
         assert!(has_block(&out, "third"));
     }
 
@@ -322,7 +401,10 @@ mod tests {
         assert!(!has_block(text, "demo"));
         let out = upsert_block(text, &block("2.2.2.2", &[], &[], &id));
         assert!(out.starts_with("Host demo demo.local\n    HostName 1.1.1.1\n\nHost demo\n"));
-        assert_eq!(current_values(&out, "demo").0.as_deref(), Some("2.2.2.2"));
+        assert_eq!(
+            current_values(&out, "demo").hostname.as_deref(),
+            Some("2.2.2.2")
+        );
     }
 
     #[test]
