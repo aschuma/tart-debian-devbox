@@ -156,11 +156,12 @@ pub fn shell_quote(s: &str) -> String {
         return out;
     }
     let mut out = String::with_capacity(s.len() * 2);
-    for (i, c) in s.chars().enumerate() {
+    for (i, c) in s.char_indices() {
         let escape = match c {
             ' ' | '!' | '"' | '$' | '&' | '\'' | '(' | ')' | '*' | ',' | ';' | '<' | '>' | '?'
             | '[' | '\\' | ']' | '^' | '`' | '{' | '|' | '}' => true,
-            '#' | '~' => i == 0,
+            '#' => i == 0,
+            '~' => i == 0 || s.as_bytes()[i - 1] == b':',
             _ => false,
         };
         if escape {
