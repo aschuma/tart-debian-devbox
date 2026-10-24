@@ -1,5 +1,5 @@
 //! Shared sandbox for integration tests: isolated HOME/XDG dirs, a project
-//! directory, and the parity suite's fake `tart`/`ssh` world on PATH.
+//! directory, and the fake `tart`/`ssh` world (tests/fakes) on PATH.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -35,7 +35,7 @@ impl Sandbox {
 
     /// A `tctl` command configured for the sandbox (fakes first on PATH).
     pub fn cmd(&self, args: &[&str]) -> Command {
-        let fakes = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/parity/fakes");
+        let fakes = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tests/fakes");
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_tctl"));
         cmd.args(args)
             .current_dir(&self.project)

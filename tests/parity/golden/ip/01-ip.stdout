@@ -1,5 +1,0 @@
-Global : $HOME/.config/tctl/$GLOBAL_CFG
-Project: $PROJECT/$PROJECT_CFG
-VM     : demo
-Share  : $PROJECT
-

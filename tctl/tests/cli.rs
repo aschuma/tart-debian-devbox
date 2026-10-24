@@ -86,18 +86,6 @@ fn env_json_masks_values_and_diff_by_default() {
 }
 
 #[test]
-fn legacy_global_config_is_rejected_instead_of_silently_ignored() {
-    let s = Sandbox::new();
-    s.project("[vm]\nname='demo'\n");
-    std::fs::create_dir_all(s.home.join(".config/tctl")).unwrap();
-    std::fs::write(s.home.join(".config/tctl/config"), "TCTL_SSH_USER=devbox\n").unwrap();
-    let out = s.run(&["--json", "status"]);
-    assert_eq!(out.status.code(), Some(1));
-    let error: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert!(error["error"].as_str().unwrap().contains("Legacy config"));
-}
-
-#[test]
 fn config_rejects_names_that_could_escape_log_directory_or_add_ssh_options() {
     let s = Sandbox::new();
     for name in ["../escape", "-oProxyCommand=bad", "demo\nHost *", ".", ".."] {

@@ -1,8 +1,0 @@
-Global : $HOME/.config/tctl/$GLOBAL_CFG
-Project: $PROJECT/$PROJECT_CFG
-VM     : demo
-Share  : $PROJECT
-
-==> Starting VM 'demo' …
-  share: $PROJECT → /mnt/shared/workspace
-==> VM 'demo' started (background PID N).

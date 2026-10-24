@@ -51,13 +51,11 @@ Result: a local Tart image named `debian-ssh` (`BUILD_VM_NAME` in `build/build.e
 
 ```bash
 just install
-# → ~/.cargo/bin/tctl (+ transitional tart-ctl.sh symlink)
+# → ~/.cargo/bin/tctl
 # → ~/.config/tctl/config.toml (existing config never overwritten)
 export PATH="$HOME/.cargo/bin:$PATH"
 tctl --help
 ```
-
-An old `~/.local/bin/tart-ctl.sh` may still point to the Bash version; use `tctl` explicitly. Old shell configs are rejected with a migration hint, not executed by the Rust CLI.
 
 The global config holds everything that is the same for all projects (SSH user/key, share mode `auto`, env file list `.env`). It intentionally has **no VM name** — that belongs to each project.
 

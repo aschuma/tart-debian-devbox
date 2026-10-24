@@ -86,13 +86,13 @@ tctl/                       # Synchronous Rust library + clap CLI + HTTP/WebSock
 config_template/config.toml # Global defaults; project marker .tart-ctl.toml overrides per key
                             # [vm].name is required in the project, never inherited globally
                             # See README configuration reference for section/key names
-tests/parity/               # Frozen Bash reference, fake tart/ssh, scenarios and goldens
+tests/fakes/                # Fake tart/ssh shims used by the sandboxed CLI tests
 QUICKSTART.md                # First-time setup walkthrough (keep in sync with tctl commands)
 ```
 
 Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → shell → verify`.
 
-When editing the Rust controller, read `docs/rust-migration.md` for the agreed interface, compatibility rules and remaining work. Run `just test`; success requires Rust format/lint/tests, migration checks and both parity runs. Record goldens only from the frozen Bash reference. `just smoke PROJECT` is an explicit real-VM test, not a CI task.
+Architectural decisions and their rationale live in `docs/adr/` (index: `docs/adr/README.md`); read the relevant record before changing a documented boundary, and add a new numbered record for decisions that are hard to reverse. When editing the Rust controller, also read `docs/tctl-design.md` for the agreed interface and compatibility rules. Run `just test` before finishing; `just smoke PROJECT` is a manual real-VM test, never run in CI.
 
 ## Key Conventions
 
@@ -149,4 +149,4 @@ ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 
 ### Environment Variables on the VM
 
-`tctl provision` renders `[provision].env_files` (an ordered TOML array, default `[".env"]`; paths relative to the project marker, later keys winning) into shell-safe `export` lines and sends them over SSH to `/etc/profile.d/tart-provision.sh`. Preserve VM-side payload/SSH config parity with the Bash reference. Sources may be FIFOs or secret-manager mounts; stream each once. Secret-looking values are masked in text and JSON unless `--show-secrets` is explicit. The SQLite registry stores hashes, never env values.
+`tctl provision` renders `[provision].env_files` (an ordered TOML array, default `[".env"]`; paths relative to the project marker, later keys winning) into shell-safe `export` lines and sends them over SSH to `/etc/profile.d/tart-provision.sh`. Keep the VM-side payload and SSH config block format stable. Sources may be FIFOs or secret-manager mounts; stream each once. Secret-looking values are masked in text and JSON unless `--show-secrets` is explicit. The SQLite registry stores hashes, never env values.

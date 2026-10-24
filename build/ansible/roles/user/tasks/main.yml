@@ -42,12 +42,6 @@
     state: present
   when: user_ssh_key_path | length > 0
 
-- name: Remove legacy deploy user
-  ansible.builtin.user:
-    name: deploy
-    state: absent
-    remove: true
-
 - name: Copy hardened sshd_config
   ansible.builtin.copy:
     src: sshd_config

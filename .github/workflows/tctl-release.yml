@@ -19,11 +19,8 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: aarch64-apple-darwin
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - name: Install test tools
-        run: brew install just bash
+        run: brew install just
       - name: Test without real VMs
         run: just test
       - name: Build Apple Silicon binary

@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{Error, Result};
 
 pub const PROJECT_FILE: &str = ".tart-ctl.toml";
-pub const LEGACY_PROJECT_FILE: &str = ".tart-ctl-env";
 pub const GLOBAL_FILE: &str = "config.toml";
-pub const LEGACY_GLOBAL_FILE: &str = "config";
 pub const DEFAULT_ENV_FILES: &[&str] = &[".env"];
 
 // ─── On-disk shape ───────────────────────────────────────────────────────────
@@ -146,10 +144,6 @@ pub fn load_global_config() -> Result<(FileConfig, bool)> {
     if path.is_file() {
         return Ok((FileConfig::read(&path)?, true));
     }
-    let legacy = config_dir().join(LEGACY_GLOBAL_FILE);
-    if legacy.is_file() {
-        return Err(Error::LegacyConfig(legacy));
-    }
     Ok((FileConfig::default(), false))
 }
 
@@ -182,16 +176,12 @@ pub fn expand_home(value: &str) -> PathBuf {
 }
 
 /// Walks upward from `start` looking for the project marker.
-/// Returns the directory containing it. A legacy `.tart-ctl-env` without a
-/// TOML sibling is reported as an error so the user migrates it.
+/// Returns the directory containing it.
 pub fn find_project_dir(start: &Path) -> Result<PathBuf> {
     let mut dir = start.to_path_buf();
     loop {
         if dir.join(PROJECT_FILE).is_file() {
             return Ok(dir);
-        }
-        if dir.join(LEGACY_PROJECT_FILE).is_file() {
-            return Err(Error::LegacyConfig(dir.join(LEGACY_PROJECT_FILE)));
         }
         if !dir.pop() {
             break;
@@ -456,18 +446,17 @@ mod tests {
     }
 
     #[test]
-    fn finds_marker_upward_and_rejects_legacy() {
+    fn finds_marker_upward() {
         let tmp = tempfile::tempdir().unwrap();
         let deep = tmp.path().join("a/b");
         std::fs::create_dir_all(&deep).unwrap();
         std::fs::write(tmp.path().join(PROJECT_FILE), "").unwrap();
         assert_eq!(find_project_dir(&deep).unwrap(), tmp.path());
 
-        let legacy = tempfile::tempdir().unwrap();
-        std::fs::write(legacy.path().join(LEGACY_PROJECT_FILE), "").unwrap();
+        let empty = tempfile::tempdir().unwrap();
         assert!(matches!(
-            find_project_dir(legacy.path()),
-            Err(Error::LegacyConfig(_))
+            find_project_dir(empty.path()),
+            Err(Error::NoProjectMarker { .. })
         ));
     }
 }

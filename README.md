@@ -42,7 +42,7 @@ This project includes content generated with the assistance of artificial intell
 
 | Role           | Tag            | What it does                                                                                                                                      |
 | -------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user`         | `user`         | Creates `devbox` (sudo, docker, SSH key), removes legacy `deploy`, hardens `sshd`                                                                 |
+| `user`         | `user`         | Creates `devbox` (sudo, docker, SSH key), hardens `sshd`                                                                                           |
 | `common_tools` | `common-tools` | Base apt packages (git, curl, jq, build-essential, …), git defaults for `devbox`                                                                  |
 | `docker`       | `docker`       | Docker CE + Buildx + Compose plugin from the official Docker apt repo                                                                             |
 | `mise`         | `mise`         | Installs mise from its apt repo, shell activation, generates the global mise config                                                               |
@@ -55,7 +55,7 @@ This project includes content generated with the assistance of artificial intell
 
 1. **mise** — everything that is a developer tool with a mise registry entry
 2. **apt** — base OS tools, Docker, and the mise binary itself
-3. nothing is downloaded by hand-written tarball logic anymore
+3. no tool is downloaded by hand-written tarball logic
 
 ---
 
@@ -174,17 +174,17 @@ mise registry | grep rust    # discover installable tools
 mise reads `mise.toml` / `.mise.toml` from the current directory upwards, so each project can pin its own toolchain, overriding the global defaults:
 
 ```toml
-# ~/projects/legacy-service/mise.toml
+# ~/projects/lh-service/mise.toml
 [tools]
-java = "temurin-17"
-node = "18"
-gradle = "7.6.4"
+java = "temurin-21"
+node = "22"
+gradle = "8.14"
 ```
 
 ```bash
-cd ~/projects/legacy-service
+cd ~/projects/lh-service
 mise install          # fetch the pinned versions once
-java --version        # → 17.x while inside this directory, 25.x elsewhere
+java --version        # → 21.x while inside this directory, 25.x elsewhere
 ```
 
 Config files under `/mnt/shared` (the virtiofs host share) and `/home/devbox` are **pre-trusted**; anywhere else mise asks you to run `mise trust` first. Commit `mise.toml` to the project so the VM and your teammates' machines agree on versions.
@@ -321,7 +321,7 @@ When you later rebuild or reprovision the template, existing clones are not affe
 
 The command is now `tctl`; the section anchor is kept for existing links.
 
-The Rust crate in `tctl/` provides a synchronous VM-control library and the `tctl` CLI. It replaces the Bash controller; a frozen Bash reference is retained only under `tests/parity/reference/` for compatibility tests. No daemon is needed.
+The Rust crate in `tctl/` provides a synchronous VM-control library and the `tctl` CLI. No daemon is needed.
 
 ### Setup
 
@@ -334,7 +334,7 @@ export PATH="$HOME/.cargo/bin:$PATH"
 tctl --help
 ```
 
-The binary is installed under the Cargo install root (`CARGO_INSTALL_ROOT`, else `CARGO_HOME`, else `~/.cargo`). A transitional `tart-ctl.sh` symlink is created alongside it (`TART_CTL_INSTALL_DIR` overrides the symlink directory). Existing TOML config is never overwritten. Use `tctl` explicitly if an old Bash copy remains earlier on PATH. The CLI rejects old shell configs with a migration hint rather than executing them.
+The binary is installed under the Cargo install root (`CARGO_INSTALL_ROOT`, else `CARGO_HOME`, else `~/.cargo`). Existing TOML config is never overwritten.
 
 Tags matching `tctl-v*` trigger an Apple Silicon release archive (`tctl-aarch64-apple-darwin.tar.gz`) and SHA-256 checksum. The workflow is configured but has not yet been run; binaries are not signed/notarised.
 
@@ -393,7 +393,7 @@ Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual
 
 ### Usage
 
-`tctl` loads `~/.config/tctl/config.toml`, then walks upward for `.tart-ctl.toml`. It works from any project subdirectory and stops with a clear error for a missing marker, missing VM name, invalid TOML, or legacy-only config. Use `tctl init` to create a new marker.
+`tctl` loads `~/.config/tctl/config.toml`, then walks upward for `.tart-ctl.toml`. It works from any project subdirectory and stops with a clear error for a missing marker, missing VM name, or invalid TOML. Use `tctl init` to create a new marker.
 
 | Command                         | Aliases | Description                                     |
 | ------------------------------- | ------- | ----------------------------------------------- |
@@ -456,7 +456,7 @@ tctl down                 # shut down when done
 
 The `provision` command reads the files listed in `[provision].env_files` in order (whichever are readable) on the host, converts each `KEY=VALUE` line into a shell-quoted `export` statement, and writes them in that order over SSH to `/etc/profile.d/tart-provision.sh` in the VM — later layers override earlier keys. The file persists across reboots and is sourced by every login shell (bash and zsh), so run `provision` once per VM — or again whenever an env file changes — and open a new shell to pick up the variables. Existing sessions are not updated, and the file is regenerated each time (removed keys disappear).
 
-To inspect the result **before** pushing, use `tctl env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (`*TOKEN*`, `*SECRET*`, `*PASS*`, `*KEY*`, …; add `--show-secrets` to reveal). `tctl env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
+To inspect the result **before** pushing, use `tctl env`. It prints the merged key/value table with the layer each value came from, masking secret-looking keys (name contains `TOKEN`, `SECRET`, `PASS`, `KEY`, `CREDENTIAL` or `AUTH`, case-insensitive; add `--show-secrets` to reveal). `tctl env --diff` additionally fetches the VM's current file and shows a unified diff, exiting non-zero when the VM is out of date — useful as a quick check after editing `.env`:
 
 ```bash
 tctl env                  # what would be pushed, and from which file
@@ -470,13 +470,11 @@ The host share needs no provisioning step: the image has an `/etc/fstab` entry (
 ## Testing the controller
 
 ```bash
-just test                         # Rust format/lint/tests, migration checks, both parity runs
-just parity                       # frozen Bash reference against goldens
-just parity --impl tctl/target/debug/tctl --format toml
+just test                         # Rust format/lint, unit and sandboxed CLI tests
 just smoke ~/Projects/my-project  # explicit real-VM smoke test; requires an existing clone
 ```
 
-The parity runner uses isolated HOME/project directories and fake `tart`/`ssh`; it compares stdout, exit codes, mutating commands, SSH argv, generated files and final VM state. Only documented differences (config filenames/keys, read-only query counts/formats, clap diagnostics, the added start IP) are normalised. Goldens are recorded from Bash, never from Rust. Bash ≥ 4 and Python 3 are required for parity (`brew install bash`); converter tests require Python ≥ 3.11.
+The CLI tests run in isolated HOME/project directories with fake `tart`/`ssh` shims from `tests/fakes/` on `PATH`; they check stdout, exit codes, issued commands, generated files and final fake VM state. Bash is required for the fakes.
 
 The manual smoke test updates the project's managed SSH block, checks SSH and previews masked env. It does not provision, clone or delete anything, and stops the VM only if it started it. It is not part of `just test` or CI.
 
@@ -676,9 +674,10 @@ ls -la /mnt/shared/workspace/
 ├── tctl/                           # Rust VM-control library + CLI, Cargo.lock committed
 │   ├── src/                        # config, backend, envfile, SSH config, registry, operations, CLI
 │   └── tests/                      # lifecycle and sandboxed CLI integration tests
-├── tests/parity/                   # Bash reference + fake tart/ssh + golden scenarios
+├── tests/fakes/                    # Fake tart/ssh shims used by the sandboxed CLI tests
 ├── scripts/smoke-tctl.sh            # Explicit manual real-VM check (never provisions env)
-├── docs/rust-migration.md           # Design decisions and implementation checkpoint
+├── docs/adr/                        # Architecture decision records (start with README.md)
+├── docs/tctl-design.md              # Detailed tctl design (architecture, config, registry, server)
 ├── config_template/                # Copied to ~/.config/tctl/ by just install (never overwritten)
 │   └── config.toml                 # Global defaults; VM names belong to project markers
 ├── QUICKSTART.md                   # Step-by-step first-time setup

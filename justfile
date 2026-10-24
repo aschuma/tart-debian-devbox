@@ -16,7 +16,6 @@ vm_name      := shell('source "$1" && printf "%s" "${BUILD_VM_NAME:?BUILD_VM_NAM
 ssh_user     := shell('source "$1" && printf "%s" "${BUILD_SSH_USER:?BUILD_SSH_USER not set in build/build.env}"', build_env)
 identity     := shell('source "$1" && printf "%s" "${BUILD_IDENTITY_FILE:?BUILD_IDENTITY_FILE not set in build/build.env}"', build_env)
 cargo_root   := env_var_or_default("CARGO_INSTALL_ROOT", env_var_or_default("CARGO_HOME", env_var("HOME") + "/.cargo"))
-install_dir  := env_var_or_default("TART_CTL_INSTALL_DIR", cargo_root / "bin")
 config_dir   := env_var_or_default("XDG_CONFIG_HOME", env_var("HOME") + "/.config") / "tctl"
 ssh_opts     := "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
@@ -39,26 +38,16 @@ lint:
     yamllint build/ansible .github
     cd build/ansible && ansible-lint
 
-# Run the VM-controller parity suite against the bash reference; `just parity --update` re-records goldens, `just parity --impl tctl/target/debug/tctl --format toml` checks the Rust binary
-parity *args:
-    tests/parity/run.sh {{args}}
-
-# Rust unit/CLI tests and both sides of the parity suite (no real VM required)
+# Rust format/lint, unit and sandboxed CLI tests (no real VM required)
 test:
     cargo fmt --manifest-path tctl/Cargo.toml --check
     cargo clippy --manifest-path tctl/Cargo.toml --all-targets --locked -- -D warnings
     cargo test --manifest-path tctl/Cargo.toml --locked
-    cargo build --manifest-path tctl/Cargo.toml --locked
-    python3 -m unittest discover -s tests
-    tests/parity/run.sh
-    tests/parity/run.sh --impl tctl/target/debug/tctl --format toml
 
-# Install the Rust CLI, a transitional tart-ctl.sh symlink and TOML defaults (never overwrite config)
+# Install the Rust CLI and TOML defaults (never overwrite config)
 install:
-    @if [[ -f "{{config_dir}}/config" && ! -f "{{config_dir}}/config.toml" ]]; then echo 'Legacy config found: first run bash scripts/migrate-tctl-env.sh [PROJECT_DIR ...]' >&2; exit 1; fi
     cargo install --path "{{justfile_directory()}}/tctl" --locked --root "{{cargo_root}}"
-    mkdir -p "{{install_dir}}" "{{config_dir}}"
-    ln -sfn "{{cargo_root}}/bin/tctl" "{{install_dir}}/tart-ctl.sh"
+    mkdir -p "{{config_dir}}"
     @if [[ -e "{{config_dir}}/config.toml" ]]; then \
       echo "Kept existing {{config_dir}}/config.toml"; \
     else \

@@ -1,1 +1,0 @@
-[warn] No global config at '$HOME/.config/tctl/$GLOBAL_CFG' — run 'just install' or copy config_template/config there.

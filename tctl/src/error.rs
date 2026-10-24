@@ -7,9 +7,6 @@ pub enum Error {
     #[error("No '{marker}' found (searched from '{from}' upward to '/').\n       Create one in the root of the project you want to manage:\n         cd <project-root> && tctl init")]
     NoProjectMarker { marker: String, from: PathBuf },
 
-    #[error("Legacy config '{0}' found. Convert it to TOML with scripts/migrate-tctl-env.sh")]
-    LegacyConfig(PathBuf),
-
     #[error("'vm.name' is not set in '{file}'.\n       Each project names its own VM there:\n         [vm]\n         name = \"my-project\"\n       Or regenerate the file:   cd '{dir}' && tctl init")]
     MissingVmName { file: PathBuf, dir: PathBuf },
 

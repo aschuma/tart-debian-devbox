@@ -1,6 +1,6 @@
 ---
 # Bookworm has an official Docker repo — no codename fallback needed
-- name: Remove legacy Docker packages
+- name: Remove conflicting distro Docker packages
   ansible.builtin.apt:
     name: [docker, docker-engine, docker.io, containerd, runc]
     state: absent

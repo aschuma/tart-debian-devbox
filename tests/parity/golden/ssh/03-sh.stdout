@@ -1,6 +1,0 @@
-Global : $HOME/.config/tctl/$GLOBAL_CFG
-Project: $PROJECT/$PROJECT_CFG
-VM     : demo
-Share  : $PROJECT
-
-==> Connecting to 'demo' (192.168.64.10) …
