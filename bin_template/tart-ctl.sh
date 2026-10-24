@@ -89,66 +89,52 @@ usage() {
 
 $(header "tart-ctl.sh — Tart VM Controller")
 
-$(dim "Loads ${GLOBAL_CONFIG_FILE}, then searches upward from PWD")
-$(dim "for ${ENV_FILE_NAME}, sources it on top, and dispatches the given command.")
-
 ${BOLD}USAGE${RESET}
     ${SCRIPT_NAME} <command>
-    ${SCRIPT_NAME} -h | --help
 
 ${BOLD}COMMANDS${RESET}
-    $(printf '%-28s' 'init')Create ${ENV_FILE_NAME} in the current directory (interactive)
-    $(printf '%-28s' 'up,  start')Start the VM
-    $(printf '%-28s' 'down, stop')Stop the VM
-    $(printf '%-28s' 'st,  status')Show VM status (running / stopped)
-    $(printf '%-28s' 'pr,  provision')Push the project env files into the VM's /etc/profile.d/
-    $(printf '%-28s' 'env [--diff]')Show the effective env; --diff compares with the VM
-    $(printf '%-28s' 'sh,  ssh')Open an interactive SSH shell in the VM
-    $(printf '%-28s' 'ip')Print the VM's current IP address
-    $(printf '%-28s' 'usc, update-ssh-config')Update ~/.ssh/config with the VM's current IP
-    $(printf '%-28s' 'help, -h, --help')Show this help message
+    $(printf '%-28s' 'up, start')Start the configured VM in the background.
+    $(printf '%-28s' 'down, stop')Stop the configured VM.
+    $(printf '%-28s' 'st, status')Show VM state and current IP when running.
+    $(printf '%-28s' 'pr, provision')Push merged env files into ${ENV_DEST} inside the VM.
+    $(printf '%-28s' 'env [--diff]')Show the effective merged environment and optionally diff against the VM.
+    $(printf '%-28s' 'sh, ssh')SSH into the VM as the configured user.
+    $(printf '%-28s' 'ip')Print the VM IP if running.
+    $(printf '%-28s' 'usc, update-ssh-config')Write or refresh the VM Host block in ${TCTL_SSH_CONFIG:-~/.ssh/config}.
+    $(printf '%-28s' 'init')Interactively create ${ENV_FILE_NAME} in the current directory.
+    $(printf '%-28s' 'help')Show this command reference.
+    $(printf '%-28s' 'help-config')Show config discovery rules and TCTL_* variables.
+
+EOF
+}
+
+usage_config() {
+  cat <<EOF
+
+$(header "tart-ctl.sh — config discovery and variables")
 
 ${BOLD}DISCOVERY${RESET}
-    Configuration is layered (later overrides earlier):
-      1. ${GLOBAL_CONFIG_FILE}
-         Global defaults shared by all projects (SSH user/key, share mode, …).
-      2. ${ENV_FILE_NAME}
-         Project marker — create it with '${SCRIPT_NAME} init'. The script walks
-         upward from the current directory to the filesystem root until it finds
-         this file; the directory that contains it becomes the project root
-         (relative env files resolve here). It must set TCTL_VM_NAME.
+    Config is layered (later overrides earlier):
+      1) ${GLOBAL_CONFIG_FILE}  — global defaults (SSH user/key, share mode, env file list)
+      2) ${ENV_FILE_NAME}       — project marker found by walking upward from PWD to '/'
+    The directory containing ${ENV_FILE_NAME} becomes the project root for relative paths.
 
-${BOLD}VARIABLES${RESET}
-    All variables are prefixed TCTL_:
-        TCTL_VM_NAME        Name of the Tart VM to manage         (required, ${ENV_FILE_NAME})
-        TCTL_SSH_USER       SSH user inside the VM                (required for ssh/provision)
-        TCTL_SSH_CONFIG     Path to SSH client config file        (required for ssh/provision)
-        TCTL_IDENTITY_FILE  Path to SSH private key               (required for ssh/provision)
-        TCTL_REMOTE_FORWARD Optional comma-separated "PORT HOST:PORT" specs written as
-                            RemoteForward (VM → host) to ~/.ssh/config
-        TCTL_LOCAL_FORWARD  Optional comma-separated "PORT HOST:PORT" specs written as
-                            LocalForward (host → VM) to ~/.ssh/config
-        TCTL_HOST_SHARE_DIR Host directory to mount into the VM   (optional)
-                            "auto" = the directory containing ${ENV_FILE_NAME}
-        TCTL_ENV_PROVISION_FILES
-                            Comma-separated env files pushed by 'provision'
-                            (default "${ENV_PROVISION_FILES_DEFAULT}"). Relative entries resolve
-                            against the project root; absolute and ~/ paths as-is.
+${BOLD}REQUIRED${RESET}
+    TCTL_VM_NAME        VM name to manage (must be set in ${ENV_FILE_NAME}).
+    TCTL_SSH_USER       SSH username inside the VM.
+    TCTL_SSH_CONFIG     SSH config file path used by this script.
+    TCTL_IDENTITY_FILE  SSH private key path used for VM access.
 
-    Env files are plain KEY=VALUE and are ${BOLD}layered${RESET} in list order — later files
-    override individual keys of earlier ones — then pushed by 'provision' into
-    the VM's /etc/profile.d/. Set ${BOLD}TCTL_ENV_FILE${RESET} to add one more layer on top:
-    a path, a FIFO, or a process substitution such as <(op inject -i .env.tpl).
+${BOLD}OPTIONAL${RESET}
+    TCTL_HOST_SHARE_DIR       Host path to mount into VM, "auto" for project root, or empty for none.
+    TCTL_REMOTE_FORWARD       Comma-separated SSH RemoteForward entries ("PORT HOST:PORT").
+    TCTL_LOCAL_FORWARD        Comma-separated SSH LocalForward entries ("PORT HOST:PORT").
+    TCTL_ENV_PROVISION_FILES  Comma-separated env file list (default: "${ENV_PROVISION_FILES_DEFAULT}").
+    TCTL_ENV_FILE             Extra top-priority env layer (path, FIFO, or process substitution).
 
-${BOLD}EXAMPLES${RESET}
-    ${SCRIPT_NAME} init
-    ${SCRIPT_NAME} up
-    ${SCRIPT_NAME} provision
-    ${SCRIPT_NAME} env --diff
-    TCTL_ENV_FILE=<(op inject -i .env.tpl) ${SCRIPT_NAME} env --show-secrets
-    ${SCRIPT_NAME} st
-    ${SCRIPT_NAME} ssh
-    ${SCRIPT_NAME} ssh -- htop
+${BOLD}ENV LAYERS${RESET}
+    Env files are read in order; later keys override earlier keys.
+    Relative entries in TCTL_ENV_PROVISION_FILES resolve from the project root.
 
 EOF
 }
@@ -464,6 +450,33 @@ EOF
   fi
 }
 
+# Ensures ~/.ssh/config has a current Host entry for this VM before connecting.
+# This avoids stale HostName after VM restarts (IP changes between boots).
+ensure_ssh_config_current() {
+  local needs_refresh=0 current_hostname="" current_user=""
+
+  if [[ ! -r "${TCTL_SSH_CONFIG}" ]] || ! grep -q "^Host ${TCTL_VM_NAME}$" "${TCTL_SSH_CONFIG}"; then
+    needs_refresh=1
+  else
+    current_hostname="$(awk -v host="${TCTL_VM_NAME}" '
+      /^Host[[:space:]]+/ { in_block = ($2 == host) }
+      in_block && /^[[:space:]]+HostName[[:space:]]+/ { print $2; exit }
+    ' "${TCTL_SSH_CONFIG}")"
+    current_user="$(awk -v host="${TCTL_VM_NAME}" '
+      /^Host[[:space:]]+/ { in_block = ($2 == host) }
+      in_block && /^[[:space:]]+User[[:space:]]+/ { print $2; exit }
+    ' "${TCTL_SSH_CONFIG}")"
+
+    [[ "${current_hostname}" == "${VM_IP}" ]] || needs_refresh=1
+    [[ "${current_user}" == "${TCTL_SSH_USER}" ]] || needs_refresh=1
+  fi
+
+  if (( needs_refresh )); then
+    info "Refreshing SSH config entry for '${TCTL_VM_NAME}' …"
+    cmd_update_ssh_config
+  fi
+}
+
 cmd_ssh() {
   # Any arguments after the command are passed through to ssh (e.g. a remote command).
   # Usage: tart-ctl.sh ssh [-- remote_cmd [args…]]
@@ -472,6 +485,7 @@ cmd_ssh() {
 
   require_ssh_settings
   require_running
+  ensure_ssh_config_current
   info "Connecting to '${TCTL_VM_NAME}' (${VM_IP}) …"
 
   # Build the ssh argument list
@@ -599,6 +613,7 @@ mask_secrets() {
 cmd_provision() {
   require_ssh_settings
   require_running
+  ensure_ssh_config_current
   load_env_layers
 
   info "Pushing ${#ENV_LAYERS[@]} env layer(s) → ${TCTL_SSH_USER}@${TCTL_VM_NAME}:${ENV_DEST}"
@@ -658,6 +673,7 @@ cmd_env() {
     echo
     require_ssh_settings
     require_running
+    ensure_ssh_config_current
     header "Diff: VM ${ENV_DEST} → local layers"
     local remote
     remote="$(ssh -T -F "${TCTL_SSH_CONFIG}" -i "${TCTL_IDENTITY_FILE}" \
@@ -680,8 +696,17 @@ cmd_env() {
 main() {
   # Handle help before anything else (no config needed)
   case "${1:-}" in
-    -h|--help|help)
+    -h|--help)
+      error "'${1}' is not supported; use '${SCRIPT_NAME} help' instead."
       usage
+      exit 1
+      ;;
+    help)
+      usage
+      exit 0
+      ;;
+    help-config|help-vars|help-discovery)
+      usage_config
       exit 0
       ;;
     "")
@@ -717,7 +742,7 @@ main() {
     sh|ssh)         cmd_ssh "$@"            ;;
     *)
       error "Unknown command: '${cmd}'"
-      echo  "Run '${SCRIPT_NAME} --help' for usage."
+      echo  "Run '${SCRIPT_NAME} help' for commands or '${SCRIPT_NAME} help-config' for config details."
       exit 1
       ;;
   esac

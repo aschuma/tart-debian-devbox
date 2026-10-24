@@ -57,7 +57,7 @@ just install
 Make sure `~/.local/bin` is on your `PATH`, then check:
 
 ```bash
-tart-ctl.sh --help
+tart-ctl.sh help
 ```
 
 The global config holds everything that is the same for all projects (SSH user/key, share mode `auto`, env file list `.env`). It intentionally has **no VM name** — that belongs to each project.

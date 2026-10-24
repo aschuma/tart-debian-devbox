@@ -2,7 +2,7 @@
 # Requires: brew install just   (plus packer, ansible, tart for the respective recipes)
 #
 # The image this builds is a read-only baseline. Clone it per project (`just clone <name>`)
-# and manage the clones with tart-ctl.sh (`just install`, then `tart-ctl.sh --help`).
+# and manage the clones with tart-ctl.sh (`just install`, then `tart-ctl.sh help`).
 # Settings for the template live in build/build.env — independent of ~/.config/tctl/config.
 #
 #   just build            build the template image with Packer
