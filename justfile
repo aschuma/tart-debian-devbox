@@ -2,8 +2,8 @@
 # Requires: brew install just   (plus packer, ansible, tart for the respective recipes)
 #
 # The image this builds is a read-only baseline. Clone it per project (`just clone <name>`)
-# and manage the clones with tart-ctl.sh (`just install`, then `tart-ctl.sh help`).
-# Settings for the template live in build/build.env — independent of ~/.config/tctl/config.
+# and manage the clones with tctl (`just install`, then `tctl --help`).
+# Settings for the template live in build/build.env — independent of ~/.config/tctl/config.toml.
 #
 #   just build            build the template image with Packer
 #   just clone my-proj    clone the template into a per-project VM
@@ -15,7 +15,7 @@ build_env    := justfile_directory() / "build/build.env"
 vm_name      := shell('source "$1" && printf "%s" "${BUILD_VM_NAME:?BUILD_VM_NAME not set in build/build.env}"', build_env)
 ssh_user     := shell('source "$1" && printf "%s" "${BUILD_SSH_USER:?BUILD_SSH_USER not set in build/build.env}"', build_env)
 identity     := shell('source "$1" && printf "%s" "${BUILD_IDENTITY_FILE:?BUILD_IDENTITY_FILE not set in build/build.env}"', build_env)
-install_dir  := env_var_or_default("TART_CTL_INSTALL_DIR", env_var("HOME") + "/.local/bin")
+cargo_root   := env_var_or_default("CARGO_INSTALL_ROOT", env_var_or_default("CARGO_HOME", env_var("HOME") + "/.cargo"))
 config_dir   := env_var_or_default("XDG_CONFIG_HOME", env_var("HOME") + "/.config") / "tctl"
 ssh_opts     := "-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
@@ -38,26 +38,33 @@ lint:
     yamllint build/ansible .github
     cd build/ansible && ansible-lint
 
-# Install tart-ctl.sh to your PATH (default: ~/.local/bin; override with TART_CTL_INSTALL_DIR) and copy config_template/ → ~/.config/tctl/
+# Rust format/lint, unit and sandboxed CLI tests (no real VM required)
+test:
+    cargo fmt --manifest-path tctl/Cargo.toml --check
+    cargo clippy --manifest-path tctl/Cargo.toml --all-targets --locked -- -D warnings
+    cargo test --manifest-path tctl/Cargo.toml --locked
+
+# Install the Rust CLI and TOML defaults (never overwrite config)
 install:
-    mkdir -p "{{install_dir}}" "{{config_dir}}"
-    install -m 0755 "{{justfile_directory()}}/bin_template/tart-ctl.sh" "{{install_dir}}/tart-ctl.sh"
-    @echo "Installed tart-ctl.sh → {{install_dir}}/tart-ctl.sh"
-    @for src in "{{justfile_directory()}}"/config_template/*; do \
-      dest="{{config_dir}}/$(basename "$src")"; \
-      if [[ -e "$dest" ]]; then \
-        echo "Kept existing $dest (template: config_template/$(basename "$src"))"; \
-      else \
-        install -m 0644 "$src" "$dest" && echo "Created $dest"; \
-      fi; \
-    done
-    @command -v tart-ctl.sh >/dev/null || echo "Note: {{install_dir}} is not on your PATH — add it to use 'tart-ctl.sh' globally."
+    cargo install --path "{{justfile_directory()}}/tctl" --locked --root "{{cargo_root}}"
+    mkdir -p "{{config_dir}}"
+    @if [[ -e "{{config_dir}}/config.toml" ]]; then \
+      echo "Kept existing {{config_dir}}/config.toml"; \
+    else \
+      install -m 0644 "{{justfile_directory()}}/config_template/config.toml" "{{config_dir}}/config.toml"; \
+    fi
+    @echo "Installed tctl → {{cargo_root}}/bin/tctl (add this directory to PATH)"
+
+# Explicit real-VM smoke test; updates SSH config, but never provisions env files
+smoke project:
+    cargo build --manifest-path tctl/Cargo.toml --locked
+    bash scripts/smoke-tctl.sh "{{justfile_directory()}}/tctl/target/debug/tctl" "{{project}}"
 
 # Clone the template image into a per-project VM, e.g.: just clone my-project
 clone name:
     tart clone {{vm_name}} {{name}}
     @echo "Cloned '{{vm_name}}' → '{{name}}'. Point a project at it:"
-    @echo "  cd ~/Projects/{{name}} && tart-ctl.sh init && tart-ctl.sh up"
+    @echo "  cd ~/Projects/{{name}} && tctl init && tctl up"
 
 # Re-run the Ansible playbook against the template VM (auto-starts/stops it). Optional tags, e.g.: just reprovision mise,runtimes
 reprovision tags="all":

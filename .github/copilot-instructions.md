@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project builds a Debian 12 (Bookworm, ARM64) development VM image for Apple Silicon Macs using **Packer** + **Tart** + **Ansible**. Packer clones a base image, boots it, and runs an Ansible playbook to provision tools. The result is a local Tart VM image named `debian-ssh` (from `BUILD_VM_NAME` in `build/build.env`). That image is a **template**: users clone it per project (`just clone <name>`) and manage the clones with `tart-ctl.sh`; the template itself is only rebuilt/reprovisioned.
+This project builds a Debian 12 (Bookworm, ARM64) development VM image for Apple Silicon Macs using **Packer** + **Tart** + **Ansible**. Packer clones a base image, boots it, and runs an Ansible playbook to provision tools. The result is a local Tart VM image named `debian-ssh` (from `BUILD_VM_NAME` in `build/build.env`). That image is a **template**: users clone it per project (`just clone <name>`) and manage the clones with the Rust CLI `tctl`; the template itself is only rebuilt/reprovisioned.
 
 Developer tooling is managed by **mise** (https://mise.jdx.dev) for a single `devbox` user. Only base OS packages, Docker, and the mise binary come from apt.
 
@@ -26,7 +26,10 @@ cd build && packer build -var-file=vars.pkrvars.hcl -var vm_name=debian-ssh-test
 
 # Clone the template for a project
 just clone my-project      # tart clone debian-ssh my-project
-cd ~/Projects/my-project && tart-ctl.sh init   # interactive: writes .tart-ctl-env (TCTL_VM_NAME, TCTL_HOST_SHARE_DIR)
+cd ~/Projects/my-project && tctl init   # interactive: writes .tart-ctl.toml
+
+# Rust controller verification (fake Tart/SSH; no real VM)
+just test
 ```
 
 ## Reprovision the Template VM (Single Role)
@@ -51,7 +54,7 @@ Available tags: `user`, `common-tools`, `docker`, `mise`, `runtimes`, `cli-tools
 ## Architecture
 
 ```
-justfile                     # Host task runner for the template image: build, validate, lint, install (tart-ctl.sh + config), clone, reprovision, tools, clean. Reads build/build.env (never the tctl config)
+justfile                     # Host task runner for the template image: build, validate, lint, install (Rust tctl + TOML defaults), clone, reprovision, tools, clean. Reads build/build.env (never the tctl config)
 build/
   build.env                  # Build-side config: BUILD_VM_NAME (→ packer -var vm_name), BUILD_SSH_USER, BUILD_IDENTITY_FILE
   debian-ssh.pkr.hcl         # Packer template — source image, provisioners
@@ -75,19 +78,21 @@ build/
       shell/                 # zsh login shell, /etc/zsh/zprofile, ~/.zshenv + ~/.zshrc templates, starship.toml, completions
       verify/                # final gate: groups, mise doctor, all *_verify_commands, docker, sudo
 
-bin_template/
-  tart-ctl.sh                # init/start/stop/status/provision/env/ssh/ip/update-ssh-config (bash 3.2 compatible)
-  .tart-ctl-env              # Project marker template — what `tart-ctl.sh init` generates; found by walking up to /.
-                             #   MUST set TCTL_VM_NAME (script dies otherwise); may override TCTL_HOST_SHARE_DIR, TCTL_ENV_PROVISION_FILES, TCTL_LOCAL_FORWARD/TCTL_REMOTE_FORWARD
-config_template/             # Copied to ~/.config/tctl/ by `just install` (existing files kept)
-  config                     # Global defaults, sourced first — intentionally NO TCTL_VM_NAME: TCTL_SSH_USER=devbox,
-                             #   TCTL_SSH_CONFIG, TCTL_IDENTITY_FILE, TCTL_REMOTE_FORWARD / TCTL_LOCAL_FORWARD (comma-separated ssh forward specs),
-                             #   TCTL_HOST_SHARE_DIR=auto (auto = dir containing .tart-ctl-env; path; or unset = no share),
-                             #   TCTL_ENV_PROVISION_FILES=.env (comma-separated; relative to project root, or absolute/~)
-QUICKSTART.md                # First-time setup walkthrough (keep in sync with justfile/tart-ctl.sh commands)
+tctl/                       # Synchronous Rust library + clap CLI + HTTP/WebSocket server; Cargo.lock committed
+  src/backend.rs            # TartBackend boundary around tart/ssh subprocesses
+  src/ops.rs                # VM operations, serialisable reports, progress reporter
+  src/server.rs             # `tctl server`: loopback-only, unauthenticated REST + jobs; shell.rs = PTY WebSocket
+  tests/                    # Sandboxed CLI, fake-backend lifecycle and real-socket server tests
+config_template/config.toml # Global defaults; project marker .tart-ctl.toml overrides per key
+                            # [vm].name is required in the project, never inherited globally
+                            # See README configuration reference for section/key names
+tests/fakes/                # Fake tart/ssh shims used by the sandboxed CLI tests
+QUICKSTART.md                # First-time setup walkthrough (keep in sync with tctl commands)
 ```
 
 Role execution order: `user → common_tools → docker → mise → runtimes → cli_tools → shell → verify`.
+
+Architectural decisions and their rationale live in `docs/adr/` (index: `docs/adr/README.md`); read the relevant record before changing a documented boundary, and add a new numbered record for decisions that are hard to reverse. When editing the Rust controller, also read `docs/tctl-design.md` for the agreed interface and compatibility rules. Run `just test` before finishing; `just smoke PROJECT` is a manual real-VM test, never run in CI.
 
 ## Key Conventions
 
@@ -144,4 +149,4 @@ ls /mnt/shared/workspace/   # workspace = share name from --dir=workspace:...
 
 ### Environment Variables on the VM
 
-`tart-ctl.sh provision` renders the files in `TCTL_ENV_PROVISION_FILES` (comma-separated, default `.env`; relative to the `.tart-ctl-env` directory, absolute/`~` as-is, layered with later keys winning) on the host into `printf %q`-quoted `export` lines and pipes them over SSH to `sudo tee /etc/profile.d/tart-provision.sh`. Sources may be FIFOs/process substitutions (1Password); each is read exactly once. The file persists in the VM and is sourced by every login shell (bash and zsh).
+`tctl provision` renders `[provision].env_files` (an ordered TOML array, default `[".env"]`; paths relative to the project marker, later keys winning) into shell-safe `export` lines and sends them over SSH to `/etc/profile.d/tart-provision.sh`. Keep the VM-side payload and SSH config block format stable. Sources may be FIFOs or secret-manager mounts; stream each once. Secret-looking values are masked in text and JSON unless `--show-secrets` is explicit. The SQLite registry stores hashes, never env values.
