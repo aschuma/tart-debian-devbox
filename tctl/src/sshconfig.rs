@@ -40,7 +40,10 @@ impl HostBlock<'_> {
             .chars()
             .any(|c| c.is_whitespace() || matches!(c, '"' | '\\'))
         {
-            format!("\"{}\"", identity.replace('\\', "\\\\").replace('"', "\\\""))
+            format!(
+                "\"{}\"",
+                identity.replace('\\', "\\\\").replace('"', "\\\"")
+            )
         } else {
             identity
         };
