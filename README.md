@@ -387,6 +387,8 @@ local_forward = ["5432 127.0.0.1:5432", "15672 127.0.0.1:15672"]
 
 > **`[ssh].identity_file`** must match the key injected during the Packer build (`ssh_key_path` in `build/vars.pkrvars.hcl`, private half in `BUILD_IDENTITY_FILE` of `build/build.env`). Changing it here without rebuilding the image will break SSH access.
 
+> **Editing the managed block by hand.** `tctl` owns exactly the `Host <vm-name>` section in your SSH config and rewrites its `HostName`, `User`, `IdentityFile` and forward lines; anything else in the file is left untouched. Keep the `Host` line to the single VM name — if you add aliases to it (`Host my-project mp`), `tctl` no longer recognises the section and appends a new `Host my-project` block, which ssh ignores because the earlier one matches first. Put aliases in their own `Host` section instead.
+
 The files listed in **`[provision].env_files`** (plain `KEY=VALUE` pairs; by default just `.env` next to `.tart-ctl.toml`) are pushed by the `provision` command into the VM's `/etc/profile.d/` so those variables are available in every login shell inside the VM. They are **layered** like in dotenv-flow, Vite or Symfony: later files override only the keys they define and do not need to repeat the rest — e.g. `[".env", ".env.local"]` for committed defaults plus gitignored personal overrides, or `["~/.config/tctl/common.env", ".env"]` for host-wide variables shared by every project.
 
 Env files only need to be *readable* — they may be symlinks, FIFOs, or virtual files provided by a secrets manager (e.g. 1Password Environments); each is streamed exactly once and never stat'ed or re-read.

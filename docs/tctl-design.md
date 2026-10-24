@@ -133,8 +133,18 @@ The registry stores **no env values**, only the hash.
   (`provision`, `env --diff`, IP wait, server) uses `run_remote(cmd) -> Output`
   which captures stdout/stderr/exit code. `--json ssh` still transfers control
   to SSH: remote/session output and exit code are not a JSON envelope.
+- **Managed SSH block**: the block `tctl` owns is a `Host` line whose *only*
+  pattern is the VM name; `Host` and `Match` lines (any case, optional
+  indentation, space or `=` separator) end a section, so everything outside the
+  block is left byte-for-byte intact. Inside it, `HostName`, `User`,
+  `IdentityFile` and the forwards are rewritten in place. If a user edits the
+  line to carry extra patterns (`Host demo demo.local`), that section is no
+  longer recognised: `tctl` appends a fresh `Host demo` block and, because ssh
+  takes the first match per option, the hand-edited section keeps winning. Keep
+  extra aliases in their own `Host` section instead.
 - **SSH config refresh**: commands that need SSH (`ssh`, `provision`,
-  `env --diff`) first make sure the managed block has the current IP and user.
+  `env --diff`) first make sure the managed block has the current IP, user and
+  identity file.
 - **Secret masking**: heuristic on key names (pattern list: README → "What
   `provision` Does") applied to human **and** JSON output; `--show-secrets` is
   the only reveal path and the server inherits the default.
