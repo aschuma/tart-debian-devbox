@@ -157,6 +157,17 @@ fn replace_after(line: &str, keyword: &str, value: &str) -> String {
 /// Reads, updates and writes the ssh config (mode 0600). Returns `true` if the block already existed.
 pub fn upsert_file(path: &Path, block: &HostBlock) -> Result<bool> {
     use std::os::unix::fs::PermissionsExt;
+    let identity_file = block.identity_file.to_string_lossy();
+    if [block.host, block.ip, block.user, identity_file.as_ref()]
+        .into_iter()
+        .chain(block.remote_forward.iter().map(String::as_str))
+        .chain(block.local_forward.iter().map(String::as_str))
+        .any(|value| value.chars().any(|c| matches!(c, '\r' | '\n' | '\0')))
+    {
+        return Err(crate::Error::Config(
+            "SSH directive values must not contain CR, LF or NUL characters.".into(),
+        ));
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
