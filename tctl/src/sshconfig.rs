@@ -171,7 +171,11 @@ pub fn upsert_file(path: &Path, block: &HostBlock) -> Result<bool> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
     let existed = has_block(&text, block.host);
     std::fs::write(path, upsert_block(&text, block))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
