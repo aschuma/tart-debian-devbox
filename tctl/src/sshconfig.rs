@@ -62,14 +62,54 @@ impl HostBlock<'_> {
     }
 }
 
-fn is_host_line(line: &str) -> Option<&str> {
-    line.strip_prefix("Host ")
-        .map(|rest| rest.split_whitespace().next().unwrap_or(""))
+/// Splits a config line into its keyword and argument text the way OpenSSH
+/// does: optional leading whitespace, case-insensitive keyword, then
+/// whitespace and/or a single `=` before the arguments. Comments and blank
+/// lines yield `None`.
+fn directive(line: &str) -> Option<(&str, &str)> {
+    let t = line.trim_start();
+    if t.is_empty() || t.starts_with('#') {
+        return None;
+    }
+    let end = t
+        .find(|c: char| c.is_whitespace() || c == '=')
+        .unwrap_or(t.len());
+    let (keyword, rest) = t.split_at(end);
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix('=').unwrap_or(rest).trim_start();
+    Some((keyword, rest))
 }
 
-/// Does `text` contain an exact `Host <name>` line?
+/// Argument text of `line` if its keyword is `keyword` (case-insensitive).
+fn argument<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    directive(line).and_then(|(kw, rest)| kw.eq_ignore_ascii_case(keyword).then_some(rest))
+}
+
+enum Section<'a> {
+    Host(Vec<&'a str>),
+    Match,
+}
+
+/// `Host …` and `Match …` lines both end the previous section.
+fn section_start(line: &str) -> Option<Section<'_>> {
+    let (keyword, rest) = directive(line)?;
+    if keyword.eq_ignore_ascii_case("host") {
+        Some(Section::Host(rest.split_whitespace().collect()))
+    } else if keyword.eq_ignore_ascii_case("match") {
+        Some(Section::Match)
+    } else {
+        None
+    }
+}
+
+/// The managed block is a `Host` line whose only pattern is `host`.
+fn starts_block(line: &str, host: &str) -> bool {
+    matches!(section_start(line), Some(Section::Host(patterns)) if patterns == [host])
+}
+
+/// Does `text` contain the managed `Host <name>` block?
 pub fn has_block(text: &str, host: &str) -> bool {
-    text.lines().any(|l| l.strip_prefix("Host ") == Some(host))
+    text.lines().any(|l| starts_block(l, host))
 }
 
 /// Current `HostName` and `User` of the block, if present.
@@ -78,24 +118,21 @@ pub fn current_values(text: &str, host: &str) -> (Option<String>, Option<String>
     let mut hostname = None;
     let mut user = None;
     for line in text.lines() {
-        if let Some(h) = is_host_line(line) {
-            in_block = h == host;
+        if section_start(line).is_some() {
+            in_block = starts_block(line, host);
             continue;
         }
         if !in_block {
             continue;
         }
-        let t = line.trim_start();
-        if line.starts_with(char::is_whitespace) {
-            if hostname.is_none() {
-                if let Some(v) = t.strip_prefix("HostName ") {
-                    hostname = Some(v.split_whitespace().next().unwrap_or("").to_string());
-                }
+        if hostname.is_none() {
+            if let Some(v) = argument(line, "HostName") {
+                hostname = Some(v.split_whitespace().next().unwrap_or("").to_string());
             }
-            if user.is_none() {
-                if let Some(v) = t.strip_prefix("User ") {
-                    user = Some(v.split_whitespace().next().unwrap_or("").to_string());
-                }
+        }
+        if user.is_none() {
+            if let Some(v) = argument(line, "User") {
+                user = Some(v.split_whitespace().next().unwrap_or("").to_string());
             }
         }
     }
@@ -124,29 +161,29 @@ pub fn upsert_block(text: &str, block: &HostBlock) -> String {
     };
 
     for line in text.lines() {
-        if let Some(h) = is_host_line(line) {
+        if section_start(line).is_some() {
             if in_block && !forward_done {
                 emit(&mut out, &mut forward_done);
             }
-            in_block = h == block.host;
+            in_block = starts_block(line, block.host);
             forward_done = false;
             out.push(line.to_string());
             continue;
         }
-        if in_block && line.starts_with(char::is_whitespace) {
-            let t = line.trim_start();
-            if t.starts_with("RemoteForward ") || t.starts_with("LocalForward ") {
+        if in_block {
+            if argument(line, "RemoteForward").is_some() || argument(line, "LocalForward").is_some()
+            {
                 if !forward_done {
                     emit(&mut out, &mut forward_done);
                 }
                 continue;
             }
-            if t.starts_with("HostName ") {
-                out.push(replace_after(line, "HostName ", block.ip));
+            if argument(line, "HostName").is_some() {
+                out.push(replace_after(line, "HostName", block.ip));
                 continue;
             }
-            if t.starts_with("User ") {
-                out.push(replace_after(line, "User ", block.user));
+            if argument(line, "User").is_some() {
+                out.push(replace_after(line, "User", block.user));
                 continue;
             }
         }
@@ -160,10 +197,10 @@ pub fn upsert_block(text: &str, block: &HostBlock) -> String {
     s
 }
 
-/// Keeps the indentation of `line`, replaces `<keyword>…` by `<keyword><value>`.
+/// Keeps the indentation of `line`, replaces `<keyword>…` by `<keyword> <value>`.
 fn replace_after(line: &str, keyword: &str, value: &str) -> String {
     let indent_len = line.len() - line.trim_start().len();
-    format!("{}{}{}", &line[..indent_len], keyword, value)
+    format!("{}{} {}", &line[..indent_len], keyword, value)
 }
 
 /// Reads, updates and writes the ssh config (mode 0600). Returns `true` if the block already existed.
@@ -245,5 +282,60 @@ mod tests {
         let lf = vec!["80 127.0.0.1:80".to_string()];
         let out = upsert_block(text, &block("1.1.1.1", &[], &lf, &id));
         assert_eq!(out, "Host demo\n    HostName 1.1.1.1\n    User devbox\n\n    LocalForward 80 127.0.0.1:80\nHost trailing\n    HostName 2.2.2.2\n");
+    }
+
+    #[test]
+    fn match_and_unusual_host_lines_end_the_managed_block() {
+        let id = PathBuf::from("/k");
+        let rf = vec!["1080 127.0.0.1:1080".to_string()];
+        let text = concat!(
+            "Host demo\n    HostName 1.1.1.1\n    User devbox\n    LocalForward 1 127.0.0.1:1\n",
+            "Match host *.corp\n    User corp\n    LocalForward 2 127.0.0.1:2\n",
+            "\thost other\n    HostName 9.9.9.9\n    RemoteForward 3 127.0.0.1:3\n",
+            "Host=third\n    User third\n",
+        );
+        let out = upsert_block(text, &block("5.5.5.5", &rf, &[], &id));
+        assert_eq!(
+            out,
+            concat!(
+                "Host demo\n    HostName 5.5.5.5\n    User devbox\n    RemoteForward 1080 127.0.0.1:1080\n",
+                "Match host *.corp\n    User corp\n    LocalForward 2 127.0.0.1:2\n",
+                "\thost other\n    HostName 9.9.9.9\n    RemoteForward 3 127.0.0.1:3\n",
+                "Host=third\n    User third\n",
+            )
+        );
+        assert_eq!(
+            current_values(&out, "demo"),
+            (Some("5.5.5.5".into()), Some("devbox".into()))
+        );
+        assert_eq!(
+            current_values(&out, "other"),
+            (Some("9.9.9.9".into()), None)
+        );
+        assert!(has_block(&out, "third"));
+    }
+
+    #[test]
+    fn multi_pattern_host_line_is_not_the_managed_block() {
+        let id = PathBuf::from("/k");
+        let text = "Host demo demo.local\n    HostName 1.1.1.1\n";
+        assert!(!has_block(text, "demo"));
+        let out = upsert_block(text, &block("2.2.2.2", &[], &[], &id));
+        assert!(out.starts_with("Host demo demo.local\n    HostName 1.1.1.1\n\nHost demo\n"));
+        assert_eq!(current_values(&out, "demo").0.as_deref(), Some("2.2.2.2"));
+    }
+
+    #[test]
+    fn directives_are_case_insensitive_with_flexible_separators() {
+        assert_eq!(
+            argument("    hostname=1.2.3.4", "HostName"),
+            Some("1.2.3.4")
+        );
+        assert_eq!(argument("\tUSER   bob", "User"), Some("bob"));
+        assert_eq!(argument("    HostName 1.2.3.4", "Host"), None);
+        assert_eq!(argument("# Host demo", "Host"), None);
+        assert!(starts_block("HOST demo", "demo"));
+        assert!(!starts_block("Host demo other", "demo"));
+        assert!(matches!(section_start("Match all"), Some(Section::Match)));
     }
 }
