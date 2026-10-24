@@ -35,12 +35,21 @@ impl HostBlock<'_> {
 
     /// A complete new block, preceded by an empty line.
     pub fn render_new(&self) -> String {
+        let identity = self.identity_file.display().to_string();
+        let identity = if identity
+            .chars()
+            .any(|c| c.is_whitespace() || matches!(c, '"' | '\\'))
+        {
+            format!("\"{}\"", identity.replace('\\', "\\\\").replace('"', "\\\""))
+        } else {
+            identity
+        };
         let mut s = format!(
             "\nHost {}\n    HostName {}\n    User {}\n    IdentityFile {}\n    IdentitiesOnly yes\n    StrictHostKeyChecking no\n    UserKnownHostsFile /dev/null\n",
             self.host,
             self.ip,
             self.user,
-            self.identity_file.display()
+            identity
         );
         for l in self.forward_lines() {
             s.push_str(&l);
