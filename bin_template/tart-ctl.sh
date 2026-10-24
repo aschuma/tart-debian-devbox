@@ -98,7 +98,7 @@ ${BOLD}COMMANDS${RESET}
     $(printf '%-28s' 'st, status')Show VM state and current IP when running.
     $(printf '%-28s' 'pr, provision')Push merged env files into ${ENV_DEST} inside the VM.
     $(printf '%-28s' 'env [--diff]')Show the effective merged environment and optionally diff against the VM.
-    $(printf '%-28s' 'sh, ssh')SSH into the VM as the configured user.
+    $(printf '%-28s' 'sh, ssh [-- <cmd> ...]')SSH into the VM as the configured user or run a single remote command.
     $(printf '%-28s' 'ip')Print the VM IP if running.
     $(printf '%-28s' 'usc, update-ssh-config')Write or refresh the VM Host block in ${TCTL_SSH_CONFIG:-~/.ssh/config}.
     $(printf '%-28s' 'init')Interactively create ${ENV_FILE_NAME} in the current directory.
