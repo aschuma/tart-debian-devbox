@@ -14,7 +14,6 @@ use crate::Result;
 #[derive(Debug, Clone, Serialize)]
 pub struct VmRecord {
     pub name: String,
-    pub template: Option<String>,
     pub project_dir: PathBuf,
     pub share_dir: Option<PathBuf>,
     pub remote_forward: Vec<String>,
@@ -42,7 +41,6 @@ pub struct Registry {
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS vms (
     name                TEXT PRIMARY KEY,
-    template            TEXT,
     project_dir         TEXT NOT NULL,
     share_dir           TEXT,
     remote_forward      TEXT NOT NULL DEFAULT '[]',
@@ -72,15 +70,6 @@ impl Registry {
         let conn = Connection::open(path)?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         conn.execute_batch(SCHEMA)?;
-        // Upgrade registries produced by the pre-release scaffold.
-        let has_template: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM pragma_table_info('vms') WHERE name = 'template')",
-            [],
-            |row| row.get(0),
-        )?;
-        if !has_template {
-            conn.execute_batch("ALTER TABLE vms ADD COLUMN template TEXT;")?;
-        }
         Ok(Registry {
             conn,
             path: path.to_path_buf(),
@@ -195,13 +184,12 @@ impl Registry {
 }
 
 const SELECT: &str = "SELECT name, project_dir, share_dir, remote_forward, local_forward, env_files,
-                             last_ip, pid, log_path, last_provision_hash, last_provision_at, updated_at, template FROM vms";
+                             last_ip, pid, log_path, last_provision_hash, last_provision_at, updated_at FROM vms";
 
 fn row_to_record(row: &rusqlite::Row) -> rusqlite::Result<VmRecord> {
     let json_list = |s: String| serde_json::from_str::<Vec<String>>(&s).unwrap_or_default();
     Ok(VmRecord {
         name: row.get(0)?,
-        template: row.get(12)?,
         project_dir: PathBuf::from(row.get::<_, String>(1)?),
         share_dir: row.get::<_, Option<String>>(2)?.map(PathBuf::from),
         remote_forward: json_list(row.get(3)?),
@@ -250,11 +238,12 @@ mod tests {
     use crate::config::FileConfig;
 
     #[test]
-    fn opens_pre_release_schema_without_losing_rows() {
+    fn opens_legacy_schema_with_template_without_losing_rows() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("old.db");
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch(&SCHEMA.replace("    template            TEXT,\n", ""))
+        conn.execute_batch(SCHEMA).unwrap();
+        conn.execute_batch("ALTER TABLE vms ADD COLUMN template TEXT;")
             .unwrap();
         conn.execute(
             "INSERT INTO vms(name, project_dir) VALUES ('demo', '/project')",
@@ -263,7 +252,7 @@ mod tests {
         .unwrap();
         drop(conn);
         let reg = Registry::open(&path).unwrap();
-        assert_eq!(reg.get("demo").unwrap().unwrap().template, None);
+        assert_eq!(reg.get("demo").unwrap().unwrap().name, "demo");
     }
 
     #[test]
@@ -284,7 +273,6 @@ mod tests {
             .unwrap();
         reg.record_provision("demo", "abc").unwrap();
         let r = reg.get("demo").unwrap().unwrap();
-        assert_eq!(r.template, None);
         assert_eq!(r.pid, Some(42));
         assert_eq!(r.last_ip.as_deref(), Some("1.2.3.4"));
         assert_eq!(r.local_forward, vec!["1 2"]);

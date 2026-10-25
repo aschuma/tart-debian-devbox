@@ -39,6 +39,9 @@ fn init_is_scriptable_and_registers_without_overwriting() {
     assert_eq!(init["result"]["vm"], "demo");
     let list = s.json(&["--json", "registry", "list"]);
     assert_eq!(list["result"][0]["name"], "demo");
+    assert!(list["result"][0].get("template").is_none());
+    let show = s.json(&["--json", "registry", "show", "demo"]);
+    assert!(show["result"].get("template").is_none());
     let original = std::fs::read(s.project.join(".tart-ctl.toml")).unwrap();
     assert!(!s
         .run(&["init", "--vm", "other", "--share", "none"])
